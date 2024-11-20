@@ -6,6 +6,7 @@ torch.set_printoptions(sci_mode=False)
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
 import lightning as L
+from pytorch_lightning.loggers import TensorBoardLogger
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch import seed_everything
@@ -45,6 +46,13 @@ class TrainingManager:
         ) 
         return wandb_logger
 
+    def _setup_tensorboard_logger(self, save_path: Path):
+        tensorboard_logger = TensorBoardLogger(
+            save_path, 
+            name=get_datestring()
+        )
+        return tensorboard_logger
+    
     def _setup_callbacks(self, save_path):
         checkpoint_callback = ModelCheckpoint(
                 monitor="validation_step_loss",
@@ -59,7 +67,8 @@ class TrainingManager:
 
     def _setup_trainer(self, module_path: Path):
         print("Module Path: ", module_path.name, module_path)
-        logger = self._setup_wandb_logger(module_path) 
+        # logger = self._setup_wandb_logger(module_path) 
+        logger = self._setup_tensorboard_logger(module_path)
         checkpoint_callback = self._setup_callbacks(module_path)
         trainer = L.Trainer(
                 fast_dev_run=self.fast_dev_run,

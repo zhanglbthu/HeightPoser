@@ -23,6 +23,7 @@ class PoseDataset(Dataset):
         self.finetune = finetune
         self.bodymodel = art.model.ParametricModel(paths.smpl_file)
         self.combos = list(amass.combos.items()) # 12 combos
+        print(f"combos: {self.combos}")
         self.data = self._prepare_dataset()
 
     def _get_data_files(self, data_folder):
@@ -151,7 +152,6 @@ def pad_seq(batch):
         outputs['vels'], output_lengths['vels'] = vels, vel_lengths
 
     return (inputs, input_lengths), (outputs, output_lengths)
-
 
 class PoseDataModule(L.LightningDataModule):
     def __init__(self, finetune: str = None):

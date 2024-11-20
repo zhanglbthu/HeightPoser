@@ -4,8 +4,8 @@ from mobileposer.models import MobilePoserNet, Poser, Joints, FootContact, Veloc
 
 # List of available modules
 MODULES = {
-    'poser': Poser,
     'joints': Joints, 
+    'poser': Poser,
     'foot_contact': FootContact,
     'velocity': Velocity
 }

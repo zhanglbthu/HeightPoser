@@ -37,14 +37,13 @@ class paths:
     eval_dir = Path("/root/autodl-tmp/mobileposer/eval")
     processed_datasets = Path("/root/autodl-tmp/mobileposer/dataset_work")
 
-
 class model_config:
     """MobilePoser Model configurations."""
     # device
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     
     # joint set
-    n_joints = 5                        # (head, right-wrist, left-wrist, right-hip, left-hip)
+    n_joints = 3                        # (head, right-wrist, left-wrist, right-hip, left-hip)
     n_imu = 12*n_joints                 # 60 (3 accel. axes + 3x3 orientation rotation matrix) * 5 possible IMU locations
     n_output_joints = 24                # 24 output joints
     n_pose_output = n_output_joints*6   # 144 pose output (24 output joints * 6D rotation matrix)
