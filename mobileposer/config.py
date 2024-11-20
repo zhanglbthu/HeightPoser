@@ -26,14 +26,16 @@ class finetune_hypers:
 class paths:
     """Relevant paths for MobilePoser. Change as necessary."""
     root_dir = Path().absolute()
-    checkpoint = root_dir / "checkpoints"
+    checkpoint = root_dir / "data" / "checkpoints"
     smpl_file = root_dir / "smpl/basicmodel_m.pkl"
-    weights_file = root_dir / "checkpoints/weights.pth"
-    raw_amass = Path("/data/projects/Pose/raw/AMASS")           # TODO: replace with your path
-    raw_dip = Path("/data/projects/Pose/raw/DIP_IMU")           # TODO: replace with your path
-    raw_imuposer = Path("/data/projects/Pose/raw/IMUPoser")     # TODO: replace with your path
-    eval_dir = root_dir / "data/processed_datasets/eval"
-    processed_datasets = root_dir / "data/processed_datasets"
+    weights_file = root_dir / "data" / "checkpoints/official/weights.pth"
+    raw_amass = Path("/root/autodl-tmp/mobileposer/dataset_raw/AMASS")           # TODO: replace with your path
+    raw_dip = Path("/root/autodl-tmp/mobileposer/dataset_raw/DIP_IMU")           # TODO: replace with your path
+    raw_imuposer = Path("/root/autodl-tmp/mobileposer/dataset_raw/imuposer_dataset")     # TODO: replace with your path
+    # eval_dir = root_dir / "data/processed_datasets/eval"
+    # processed_datasets = root_dir / "data/processed_datasets"
+    eval_dir = Path("/root/autodl-tmp/mobileposer/eval")
+    processed_datasets = Path("/root/autodl-tmp/mobileposer/dataset_work")
 
 
 class model_config:
@@ -58,17 +60,17 @@ class amass:
     # device-location combinationsa
     combos = {
         'lw_rp_h': [0, 3, 4],
-        'rw_rp_h': [1, 3, 4],
-        'lw_lp_h': [0, 2, 4],
-        'rw_lp_h': [1, 2, 4],
-        'lw_lp': [0, 2],
-        'lw_rp': [0, 3],
-        'rw_lp': [1, 2],
-        'rw_rp': [1, 3],
-        'lp_h': [2, 4],
-        'rp_h': [3, 4],
-        'lp': [2],
-        'rp': [3],
+        # 'rw_rp_h': [1, 3, 4],
+        # 'lw_lp_h': [0, 2, 4],
+        # 'rw_lp_h': [1, 2, 4],
+        # 'lw_lp': [0, 2],
+        # 'lw_rp': [0, 3],
+        # 'rw_lp': [1, 2],
+        # 'rw_rp': [1, 3],
+        # 'lp_h': [2, 4],
+        # 'rp_h': [3, 4],
+        # 'lp': [2],
+        # 'rp': [3],
      }
     acc_scale = 30
     vel_scale = 2

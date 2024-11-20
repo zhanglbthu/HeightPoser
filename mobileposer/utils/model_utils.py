@@ -19,9 +19,9 @@ def reduced_pose_to_full(reduced_pose):
     """Transform reduced pose to full pose."""
     B, S = reduced_pose.shape[0], reduced_pose.shape[1]
     reduced_pose = reduced_pose.view(B, S, joint_set.n_reduced, 3, 3)
-    full_pose = torch.eye(3, device=reduced_pose.device).repeat(B, S, 24, 1, 1)
+    full_pose = torch.eye(3, device=reduced_pose.device).repeat(B, S, 24, 1, 1) # [B, S, 24, 3, 3]
     full_pose[:, :, joint_set.reduced] = reduced_pose
-    full_pose = full_pose.view(B, S, -1)
+    full_pose = full_pose.view(B, S, -1) # [B, S, 216]
     return full_pose
 
 

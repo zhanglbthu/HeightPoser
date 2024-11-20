@@ -22,7 +22,7 @@ class PoseDataset(Dataset):
         self.evaluate = evaluate
         self.finetune = finetune
         self.bodymodel = art.model.ParametricModel(paths.smpl_file)
-        self.combos = list(amass.combos.items())
+        self.combos = list(amass.combos.items()) # 12 combos
         self.data = self._prepare_dataset()
 
     def _get_data_files(self, data_folder):
@@ -55,18 +55,32 @@ class PoseDataset(Dataset):
         return data
 
     def _process_file_data(self, file_data, data):
+        '''
+        accs: [seq_num, N, 6, 3]
+        oris: [seq_num, N, 6, 3, 3]
+        poses: [seq_num, N, 24, 3, 3]
+        trans: [seq_num, N, 3]
+        '''
         accs, oris, poses, trans = file_data['acc'], file_data['ori'], file_data['pose'], file_data['tran']
         joints = file_data.get('joint', [None] * len(poses))
         foots = file_data.get('contact', [None] * len(poses))
 
         for acc, ori, pose, tran, joint, foot in zip(accs, oris, poses, trans, joints, foots):
+            # select only the first 5 IMUs (lw, rw, lh, rh, head)
             acc, ori = acc[:, :5]/amass.acc_scale, ori[:, :5]
+            
             pose_global, joint = self.bodymodel.forward_kinematics(pose=pose.view(-1, 216)) # convert local rotation to global
             pose = pose if self.evaluate else pose_global.view(-1, 24, 3, 3)                # use global only for training
             joint = joint.view(-1, 24, 3)
+            
             self._process_combo_data(acc, ori, pose, joint, tran, foot, data)
 
     def _process_combo_data(self, acc, ori, pose, joint, tran, foot, data):
+        '''
+        acc: [N, 5, 3]
+        ori: [N, 5, 3, 3]
+        pose: [N, 24, 3, 3]
+        '''
         for _, c in self.combos:
             # mask out layers for different subsets
             combo_acc = torch.zeros_like(acc)
@@ -75,7 +89,7 @@ class PoseDataset(Dataset):
             combo_ori[:, c] = ori[:, c]
             imu_input = torch.cat([combo_acc.flatten(1), combo_ori.flatten(1)], dim=1) # [[N, 15], [N, 45]] => [N, 60] 
 
-            data_len = len(imu_input) if self.evaluate else datasets.window_length
+            data_len = len(imu_input) if self.evaluate else datasets.window_length # N or window_length
             
             for key, value in zip(['imu_inputs', 'pose_outputs', 'joint_outputs', 'tran_outputs'],
                                 [imu_input, pose, joint, tran]):

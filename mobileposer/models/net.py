@@ -44,9 +44,9 @@ class MobilePoserNet(L.LightningModule):
         self.velocity = velocity if velocity else Velocity()                    # joint velocity model
 
         # base joints
-        self.j, _ = self.bodymodel.get_zero_pose_joint_and_vertex()
-        self.feet_pos = self.j[10:12].clone()
-        self.floor_y = self.j[10:12, 1].min().item()
+        self.j, _ = self.bodymodel.get_zero_pose_joint_and_vertex() # [24, 3]
+        self.feet_pos = self.j[10:12].clone() # [2, 3]
+        self.floor_y = self.j[10:12, 1].min().item() # [1]
 
         # constants
         self.gravity_velocity = torch.tensor([0, joint_set.gravity_velocity, 0]).to(self.C.device)
@@ -120,6 +120,9 @@ class MobilePoserNet(L.LightningModule):
 
     @torch.no_grad()
     def forward_offline(self, imu, input_lengths=None):
+        '''
+        imu: [batch_size, N, 60]
+        '''
         # forward the predcition model
         pose, pred_joints, vel, contact = self.forward(imu, input_lengths)
         contact = contact.squeeze(0) 
@@ -172,6 +175,7 @@ class MobilePoserNet(L.LightningModule):
 
     @torch.no_grad()
     def forward_online(self, data, input_lengths=None): # data shape: [60]
+        # preprocess data to imu: [total_frames, 60]
         imu = data.repeat(self.num_total_frames, 1) if self.imu is None else torch.cat((self.imu[1:], data.view(1, -1)))
 
         # forward the pose prediction model

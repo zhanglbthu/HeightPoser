@@ -11,6 +11,7 @@ from mobileposer.constants import MODULES
 from mobileposer.utils.model_utils import load_model
 from mobileposer.data import PoseDataset
 from mobileposer.models import MobilePoserNet
+from pathlib import Path
 
 
 class PoseEvaluator:
@@ -37,11 +38,13 @@ class PoseEvaluator:
 
 
 @torch.no_grad()
-def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluate_tran=False):
+def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluate_tran=False,
+                  save_dir=None):
     # specify device
     device = model_config.device
 
     # load data
+    # xs: [contact_seq_num, N, 60], ys: ([contact_seq_num, N, 144], [contact_seq_num, N, 3])
     xs, ys = zip(*[(imu.to(device), (pose.to(device), tran)) for imu, pose, joint, tran in dataset])
 
     # setup Pose Evaluator
@@ -53,7 +56,8 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
     
     model.eval()
     with torch.no_grad():
-        for x, y in tqdm.tqdm(list(zip(xs, ys))):
+        for idx, (x, y) in enumerate(tqdm.tqdm(zip(xs, ys), total=len(xs))):
+            # x: [N, 60], y: ([N, 144], [N, 3])
             model.reset()
             pose_p_offline, joint_p_offline, tran_p_offline, _ = model.forward_offline(x.unsqueeze(0), [x.shape[0]])
             pose_t, tran_t = y
@@ -94,6 +98,11 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
             offline_errs.append(evaluator.eval(pose_p_offline, pose_t, tran_p=tran_p_offline, tran_t=tran_t))
             if getenv("ONLINE"):
                 online_errs.append(evaluator.eval(pose_p_online, pose_t, tran_p=tran_p_online, tran_t=tran_t))
+            
+            # save pose_t, pose_p_online, tran_t, tran_p_online to one .pt file
+            if save_dir:
+                torch.save({'pose_t': pose_t, 'pose_p_online': pose_p_online, 'tran_t': tran_t, 'tran_p_online': tran_p_online},
+                           save_dir / f"{idx}.pt")
 
     # print joint errors
     print('============== offline ================')
@@ -113,6 +122,9 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, default='dip')
     args = parser.parse_args()
 
+    # record combo
+    print(f"combo: {amass.combos}")
+
     # load model 
     model = load_model(args.model)
 
@@ -120,7 +132,10 @@ if __name__ == '__main__':
     if args.dataset not in datasets.test_datasets:
         raise ValueError(f"Test dataset: {args.dataset} not found.")
     dataset = PoseDataset(fold='test', evaluate=args.dataset)
-
+    
+    save_dir = Path('data') / 'eval' / args.dataset
+    os.makedirs(save_dir, exist_ok=True)
+    
     # evaluate pose
     print(f"Starting evaluation: {args.dataset.capitalize()}")
-    evaluate_pose(model, dataset)
+    evaluate_pose(model, dataset, evaluate_tran=True, save_dir=save_dir)

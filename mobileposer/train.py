@@ -112,7 +112,6 @@ def get_checkpoint_path(finetune: str, init_from: str):
     make_dir(checkpoint_path)
     return Path(checkpoint_path)
 
-
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--module", default=None)
