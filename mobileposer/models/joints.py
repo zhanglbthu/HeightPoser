@@ -27,7 +27,11 @@ class Joints(L.LightningModule):
         # model definitions
         self.bodymodel = art.model.ParametricModel(paths.smpl_file, device=self.C.device)
         self.joints = RNN(self.C.n_imu, 24 * 3, 256) # joint estimation model 
-
+        
+        # log input and output dimensions
+        print(f"Input dimensions: {self.C.n_imu}")
+        print(f"Output dimensions: {24 * 3}")
+        
         # loss function 
         self.loss = nn.MSELoss()
         self.t_weight = 1e-5

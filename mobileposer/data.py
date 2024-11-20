@@ -74,8 +74,30 @@ class PoseDataset(Dataset):
             pose = pose if self.evaluate else pose_global.view(-1, 24, 3, 3)                # use global only for training
             joint = joint.view(-1, 24, 3)
             
-            self._process_combo_data(acc, ori, pose, joint, tran, foot, data)
+            # self._process_combo_data(acc, ori, pose, joint, tran, foot, data)
+            self._process_single_combo_data(acc, ori, pose, joint, tran, foot, data)
 
+    def _process_single_combo_data(self, acc, ori, pose, joint, tran, foot, data):
+        '''
+        acc: [N, 5, 3]
+        ori: [N, 5, 3, 3]
+        pose: [N, 24, 3, 3]
+        '''
+        c = self.combos[0][1] # [0, 3, 4]
+        combo_acc = acc[:, c]
+        combo_ori = ori[:, c]
+        imu_input = torch.cat([combo_acc.flatten(1), combo_ori.flatten(1)], dim=1) # [[N, 9], [N, 27]] => [N, 36]
+        
+        data_len = len(imu_input) if self.evaluate else datasets.window_length # N or window_length
+        
+        for key, value in zip(['imu_inputs', 'pose_outputs', 'joint_outputs', 'tran_outputs'],
+                            [imu_input, pose, joint, tran]):
+            data[key].extend(torch.split(value, data_len))
+            
+        if not (self.evaluate or self.finetune): # do not finetune translation module
+            self._process_translation_data(joint, tran, foot, data_len, data)
+        
+    
     def _process_combo_data(self, acc, ori, pose, joint, tran, foot, data):
         '''
         acc: [N, 5, 3]
