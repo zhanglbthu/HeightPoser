@@ -45,7 +45,7 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
 
     # load data
     # xs: [contact_seq_num, N, 60], ys: ([contact_seq_num, N, 144], [contact_seq_num, N, 3])
-    xs, ys = zip(*[(imu.to(device), (pose.to(device), tran)) for imu, pose, joint, tran in dataset])
+    xs, ys, zs = zip(*[(imu.to(device), (pose.to(device), tran), (velocity.to(device), contact.to(device))) for imu, pose, joint, tran, velocity, contact in dataset])
 
     # setup Pose Evaluator
     evaluator = PoseEvaluator()
@@ -61,11 +61,14 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
             model.reset()
             pose_p_offline, joint_p_offline, tran_p_offline, _ = model.forward_offline(x.unsqueeze(0), [x.shape[0]])
             pose_t, tran_t = y
+            
+            vel_t, contact_t = zs[idx]
+            
             pose_t = art.math.r6d_to_rotation_matrix(pose_t)
 
             if getenv("ONLINE"):
                 online_results = [model.forward_online(f) for f in torch.cat((x, x[-1].repeat(num_future_frame, 1)))]
-                pose_p_online, joint_p_online, tran_p_online, _ = [torch.stack(_)[num_future_frame:] for _ in zip(*online_results)]
+                pose_p_online, joint_p_online, tran_p_online, contact_p_online = [torch.stack(_)[num_future_frame:] for _ in zip(*online_results)]
 
             if evaluate_tran:
                 # compute gt move distance at every frame 
@@ -101,7 +104,12 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
             
             # save pose_t, pose_p_online, tran_t, tran_p_online to one .pt file
             if save_dir:
-                torch.save({'pose_t': pose_t, 'pose_p_online': pose_p_online, 'tran_t': tran_t, 'tran_p_online': tran_p_online},
+                torch.save({'pose_t': pose_t, 
+                            'pose_p_online': pose_p_online, 
+                            'tran_t': tran_t, 
+                            'tran_p_online': tran_p_online,
+                            'contact_t': contact_t,
+                            'contact_p_online': contact_p_online},
                            save_dir / f"{idx}.pt")
 
     # print joint errors
@@ -129,9 +137,13 @@ if __name__ == '__main__':
     model = load_model(args.model)
 
     # load dataset
+    
+    fold = 'test'
+    
     if args.dataset not in datasets.test_datasets:
-        raise ValueError(f"Test dataset: {args.dataset} not found.")
-    dataset = PoseDataset(fold='test', evaluate=args.dataset)
+        fold = 'predict'
+        # raise ValueError(f"Test dataset: {args.dataset} not found.")
+    dataset = PoseDataset(fold=fold, evaluate=args.dataset)
     
     save_dir = Path('data') / 'eval' / args.dataset
     os.makedirs(save_dir, exist_ok=True)

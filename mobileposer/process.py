@@ -50,14 +50,18 @@ def process_amass():
         processed = []
 
     for ds_name in datasets.amass_datasets:
-        # skip processed 
-        if f"{ds_name}.pt" in processed:
-            continue
+        # # skip processed 
+        # if f"{ds_name}.pt" in processed:
+        #     continue
 
         data_pose, data_trans, data_beta, length = [], [], [], []
         print("\rReading", ds_name)
 
         for npz_fname in tqdm(sorted(glob.glob(os.path.join(paths.raw_amass, ds_name, "*/*_poses.npz")))):
+            # if npz_fname is not start with "036"
+            if not npz_fname.split("/")[-1].startswith("36"):
+                continue    
+            
             try: cdata = np.load(npz_fname)
             except: continue
 
@@ -91,7 +95,7 @@ def process_amass():
         tran = amass_rot.matmul(tran.unsqueeze(-1)).view_as(tran)
         pose[:, 0] = math.rotation_matrix_to_axis_angle(
             amass_rot.matmul(math.axis_angle_to_rotation_matrix(pose[:, 0])))
-
+        
         print("Synthesizing IMU accelerations and orientations")
         b = 0
         out_pose, out_shape, out_tran, out_joint, out_vrot, out_vacc, out_contact = [], [], [], [], [], [], []
@@ -121,7 +125,7 @@ def process_amass():
             'ori': out_vrot,
             'contact': out_contact
         }
-        data_path = paths.processed_datasets / f"{ds_name}.pt"
+        data_path = paths.processed_datasets / "predict" / f"{ds_name}.pt"
         torch.save(data, data_path)
         print(f"Synthetic AMASS dataset is saved at: {data_path}")
 

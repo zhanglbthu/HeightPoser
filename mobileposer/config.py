@@ -101,6 +101,14 @@ class datasets:
     imuposer_train = "imuposer_train.pt"
     imuposer_test = "imuposer_test.pt"
 
+    # uneven terrain dataset
+    cmu = "CMU.pt"
+    
+    # Predict datasets
+    predict_datasets = {
+        'cmu': cmu
+    }
+
     # Test datasets
     test_datasets = {
         'dip': dip_test,
@@ -115,10 +123,12 @@ class datasets:
     }
 
     # AMASS datasets (add more as they become available in AMASS!)
-    amass_datasets = ['ACCAD', 'BioMotionLab_NTroje', 'BMLhandball', 'BMLmovi', 'CMU', 
-                      'DanceDB', 'DFaust_67', 'EKUT', 'Eyes_Japan_Dataset', 'HUMAN4D',
-                      'HumanEva', 'KIT', 'MPI_HDM05', 'MPI_Limits', 'MPI_mosh', 'SFU',
-                      'SSM_synced', 'TCD_handMocap', 'TotalCapture', 'Transitions_mocap']
+    # amass_datasets = ['ACCAD', 'BioMotionLab_NTroje', 'BMLhandball', 'BMLmovi', 'CMU', 
+    #                   'DanceDB', 'DFaust_67', 'EKUT', 'Eyes_Japan_Dataset', 'HUMAN4D',
+    #                   'HumanEva', 'KIT', 'MPI_HDM05', 'MPI_Limits', 'MPI_mosh', 'SFU',
+    #                   'SSM_synced', 'TCD_handMocap', 'TotalCapture', 'Transitions_mocap']
+    
+    amass_datasets = ['CMU']
 
     # Root-relative joint positions
     root_relative = False
