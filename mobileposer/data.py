@@ -97,7 +97,6 @@ class PoseDataset(Dataset):
         if not (self.evaluate or self.finetune): # do not finetune translation module
             self._process_translation_data(joint, tran, foot, data_len, data)
         
-    
     def _process_combo_data(self, acc, ori, pose, joint, tran, foot, data):
         '''
         acc: [N, 5, 3]

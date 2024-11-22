@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import List
 from tqdm import tqdm 
 import wandb
+import sys
 
 from mobileposer.constants import MODULES
 from mobileposer.data import PoseDataModule
@@ -110,9 +111,10 @@ def get_checkpoint_path(finetune: str, init_from: str):
     if finetune:
         # finetune from a checkpoint
         parts = init_from.split(os.path.sep)
-        checkpoint_path = Path(os.path.join(parts[0], parts[1]))
+        checkpoint_path = Path(os.path.join(parts[0], parts[1], parts[2]))
         finetune_dir = f"finetuned_{finetune}"
         checkpoint_path = checkpoint_path / finetune_dir
+
     else:
         # make directory for trained models
         dir_name = get_dir_number(paths.checkpoint) 
