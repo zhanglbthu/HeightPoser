@@ -118,6 +118,8 @@ class datasets:
                       'DanceDB', 'DFaust_67', 'EKUT', 'Eyes_Japan_Dataset', 'HUMAN4D',
                       'HumanEva', 'KIT', 'MPI_HDM05', 'MPI_Limits', 'MPI_mosh', 'SFU',
                       'SSM_synced', 'TCD_handMocap', 'TotalCapture', 'Transitions_mocap']
+    
+    # amass_datasets = ['CMU']
 
     # Root-relative joint positions
     root_relative = False

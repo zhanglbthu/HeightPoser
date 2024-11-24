@@ -43,6 +43,14 @@ def process_amass():
         rfoot_contact = torch.cat((torch.zeros(1, dtype=torch.int), rfoot_contact))
         return torch.stack((lfoot_contact, rfoot_contact), dim=1)
 
+    def _relative_height(vert):
+        '''
+        Compute relative height of the body.
+        '''
+        relative_height = vert[:, ji_mask[0], 1] - vert[:, ji_mask[3], 1] # left wrist - right thigh
+        return relative_height
+        
+        
     # enable skipping processed files
     try:
         processed = [fpath.name for fpath in (paths.processed_datasets).iterdir()]
@@ -58,6 +66,7 @@ def process_amass():
         print("\rReading", ds_name)
 
         for npz_fname in tqdm(sorted(glob.glob(os.path.join(paths.raw_amass, ds_name, "*/*_poses.npz")))):
+            
             try: cdata = np.load(npz_fname)
             except: continue
 
@@ -95,6 +104,7 @@ def process_amass():
         print("Synthesizing IMU accelerations and orientations")
         b = 0
         out_pose, out_shape, out_tran, out_joint, out_vrot, out_vacc, out_contact = [], [], [], [], [], [], []
+        out_rheight = []
         for i, l in tqdm(list(enumerate(length))):
             if l <= 12: b += l; print("\tdiscard one sequence with length", l); continue
             p = math.axis_angle_to_rotation_matrix(pose[b:b + l]).view(-1, 24, 3, 3)
@@ -106,8 +116,8 @@ def process_amass():
             out_joint.append(joint[:, :24].contiguous().clone())  # N, 24, 3
             out_vacc.append(_syn_acc(vert[:, vi_mask]))  # N, 6, 3
             out_contact.append(_foot_ground_probs(joint).clone()) # N, 2
-
             out_vrot.append(grot[:, ji_mask])  # N, 6, 3, 3
+            out_rheight.append(_relative_height(vert))  # N
             b += l
 
         print("Saving...")
@@ -119,7 +129,8 @@ def process_amass():
             'tran': out_tran,
             'acc': out_vacc,
             'ori': out_vrot,
-            'contact': out_contact
+            'contact': out_contact,
+            'rheight': out_rheight
         }
         data_path = paths.processed_datasets / f"{ds_name}.pt"
         torch.save(data, data_path)
