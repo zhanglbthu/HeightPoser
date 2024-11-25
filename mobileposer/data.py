@@ -63,10 +63,11 @@ class PoseDataset(Dataset):
         trans: [seq_num, N, 3]
         '''
         accs, oris, poses, trans = file_data['acc'], file_data['ori'], file_data['pose'], file_data['tran']
+        rheights = file_data['rheight'] # * add relative height
         joints = file_data.get('joint', [None] * len(poses))
         foots = file_data.get('contact', [None] * len(poses))
 
-        for acc, ori, pose, tran, joint, foot in zip(accs, oris, poses, trans, joints, foots):
+        for acc, ori, pose, tran, joint, foot, rheight in zip(accs, oris, poses, trans, joints, foots, rheights):
             # select only the first 5 IMUs (lw, rw, lh, rh, head)
             acc, ori = acc[:, :5]/amass.acc_scale, ori[:, :5]
             
@@ -74,10 +75,12 @@ class PoseDataset(Dataset):
             pose = pose if self.evaluate else pose_global.view(-1, 24, 3, 3)                # use global only for training
             joint = joint.view(-1, 24, 3)
             
+            rheight = rheight.view(-1, 1)
+            
             # self._process_combo_data(acc, ori, pose, joint, tran, foot, data)
-            self._process_single_combo_data(acc, ori, pose, joint, tran, foot, data)
+            self._process_single_combo_data(acc, ori, pose, joint, tran, foot, data, rheight)
 
-    def _process_single_combo_data(self, acc, ori, pose, joint, tran, foot, data):
+    def _process_single_combo_data(self, acc, ori, pose, joint, tran, foot, data, rheight=None):
         '''
         acc: [N, 5, 3]
         ori: [N, 5, 3, 3]
@@ -87,6 +90,10 @@ class PoseDataset(Dataset):
         combo_acc = acc[:, c]
         combo_ori = ori[:, c]
         imu_input = torch.cat([combo_acc.flatten(1), combo_ori.flatten(1)], dim=1) # [[N, 9], [N, 27]] => [N, 36]
+        
+        if rheight is not None:
+            # add relative height to the input
+            imu_input = torch.cat([imu_input, rheight], dim=1)
         
         data_len = len(imu_input) if self.evaluate else datasets.window_length # N or window_length
         

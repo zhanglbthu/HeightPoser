@@ -31,6 +31,12 @@ def _syn_acc(v, smooth_n=4):
              for i in range(0, v.shape[0] - smooth_n * 2)])
     return acc
 
+def _relative_height(vert):
+    '''
+    Compute relative height of the body.
+    '''
+    relative_height = vert[:, vi_mask[0], 1] - vert[:, vi_mask[3], 1] # left wrist - right thigh
+    return relative_height
 
 def process_amass():
     def _foot_ground_probs(joint):
@@ -42,14 +48,6 @@ def process_amass():
         lfoot_contact = torch.cat((torch.zeros(1, dtype=torch.int), lfoot_contact))
         rfoot_contact = torch.cat((torch.zeros(1, dtype=torch.int), rfoot_contact))
         return torch.stack((lfoot_contact, rfoot_contact), dim=1)
-
-    def _relative_height(vert):
-        '''
-        Compute relative height of the body.
-        '''
-        relative_height = vert[:, ji_mask[0], 1] - vert[:, ji_mask[3], 1] # left wrist - right thigh
-        return relative_height
-        
         
     # enable skipping processed files
     try:
@@ -232,7 +230,6 @@ def process_totalcapture():
     torch.save(data, data_path)
     print("Preprocessed TotalCapture dataset is saved at:", paths.processed_totalcapture)
 
-
 def process_dipimu(split="test"):
     """Preprocess DIP for finetuning and evaluation."""
     imu_mask = [7, 8, 9, 10, 0, 2]
@@ -249,6 +246,7 @@ def process_dipimu(split="test"):
     step = max(1, round(60 / TARGET_FPS))
 
     accs, oris, poses, trans, shapes, joints = [], [], [], [], [], []
+    rheights = []
     for subject_name in subjects:
         for motion_name in os.listdir(os.path.join(paths.raw_dip, subject_name)):
             try:
@@ -284,6 +282,7 @@ def process_dipimu(split="test"):
                     grot, joint, vert = body_model.forward_kinematics(p, shape, tran, calc_mesh=True)
                     poses.append(p.clone())
                     joints.append(joint)
+                    rheights.append(_relative_height(vert))
                 else:
                     print(f"DIP-IMU: {subject_name}/{motion_name} has too much nan! Discard!")
             except Exception as e:
@@ -298,11 +297,11 @@ def process_dipimu(split="test"):
         'tran': trans,
         'acc': accs,
         'ori': oris,
+        'rheight': rheights
     }
     data_path = paths.eval_dir / f"dip_{split}.pt"
     torch.save(data, data_path)
     print(f"Preprocessed DIP-IMU dataset is saved at: {data_path}")
-
 
 def process_imuposer(split: str="train"):
     """Preprocess the IMUPoser dataset"""
@@ -312,6 +311,7 @@ def process_imuposer(split: str="train"):
     subjects = train_split if split == "train" else test_split
 
     accs, oris, poses, trans = [], [], [], []
+    rheights = []
     for pid_path in sorted(paths.raw_imuposer.iterdir()):
         if pid_path.name not in subjects:
             continue
@@ -333,27 +333,29 @@ def process_imuposer(split: str="train"):
 
                 # ensure sizes are consistent
                 assert tran.shape[0] == pose.shape[0]
+                
+                grot, joint, vert = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
 
                 accs.append(acc)    # N, 5, 3
                 oris.append(ori)    # N, 5, 3, 3
                 poses.append(pose)  # N, 24, 3, 3
                 trans.append(tran)  # N, 3
+                rheights.append(_relative_height(vert))  # N
 
     print(f"# Data Processed: {len(accs)}")
     data = {
         'acc': accs,
         'ori': oris,
         'pose': poses,
-        'tran': trans
+        'tran': trans,
+        'rheight': rheights
     }
     data_path = paths.eval_dir / f"imuposer_{split}.pt"
     torch.save(data, data_path)
 
-
 def create_directories():
     paths.processed_datasets.mkdir(exist_ok=True, parents=True)
     paths.eval_dir.mkdir(exist_ok=True, parents=True)
-
 
 if __name__ == "__main__":
     parser = ArgumentParser()

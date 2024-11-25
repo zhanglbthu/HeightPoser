@@ -16,20 +16,23 @@ class Joints(L.LightningModule):
     Outputs: 24 Joint positions. 
     """
 
-    def __init__(self, finetune: bool=False):
+    def __init__(self, finetune: bool=False, height: bool=True):
         super().__init__()
 
         # constants
         self.C = model_config
         self.finetune = finetune
         self.hypers = finetune_hypers if finetune else train_hypers
+        
+        # relative height
+        self.input_dim = self.C.n_imu + 1 if height else self.C.n_imu
 
         # model definitions
         self.bodymodel = art.model.ParametricModel(paths.smpl_file, device=self.C.device)
-        self.joints = RNN(self.C.n_imu, 24 * 3, 256) # joint estimation model 
+        self.joints = RNN(self.input_dim, 24 * 3, 256) # joint estimation model 
         
         # log input and output dimensions
-        print(f"Input dimensions: {self.C.n_imu}")
+        print(f"Input dimensions: {self.input_dim}")
         print(f"Output dimensions: {24 * 3}")
         
         # loss function 

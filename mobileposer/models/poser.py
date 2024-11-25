@@ -16,7 +16,7 @@ class Poser(L.LightningModule):
     Inputs: N IMUs.
     Outputs: SMPL Pose Parameters (as 6D Rotations).
     """
-    def __init__(self, finetune: bool=False):
+    def __init__(self, finetune: bool=False, height: bool=True):
         super().__init__()
         
         # constants
@@ -29,8 +29,12 @@ class Poser(L.LightningModule):
         self.global_to_local_pose = self.bodymodel.inverse_kinematics_R
 
         # model definitions
-        self.pose = RNN(self.C.n_output_joints*3 + self.C.n_imu, joint_set.n_reduced*6, 256) # pose estimation model
+        self.pose = RNN(self.C.n_output_joints*3 + self.C.n_imu + 1, joint_set.n_reduced*6, 256) # pose estimation model
 
+        # log input and output dimensions
+        print(f"Input dimensions: {self.C.n_output_joints*3 + self.C.n_imu + 1}")
+        print(f"Output dimensions: {joint_set.n_reduced*6}")
+        
         # loss function
         self.loss = nn.MSELoss()
         self.t_weight = 1e-5 
