@@ -45,7 +45,8 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
 
     # load data
     # xs: [contact_seq_num, N, 60], ys: ([contact_seq_num, N, 144], [contact_seq_num, N, 3])
-    xs, ys, zs = zip(*[(imu.to(device), (pose.to(device), tran), (velocity.to(device), contact.to(device))) for imu, pose, joint, tran, velocity, contact in dataset])
+    # xs, ys, zs = zip(*[(imu.to(device), (pose.to(device), tran), (velocity.to(device), contact.to(device))) for imu, pose, joint, tran, velocity, contact in dataset])
+    xs, ys = zip(*[(imu.to(device), (pose.to(device), tran)) for imu, pose, joint, tran in dataset])
 
     # setup Pose Evaluator
     evaluator = PoseEvaluator()
@@ -62,7 +63,7 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
             pose_p_offline, joint_p_offline, tran_p_offline, _ = model.forward_offline(x.unsqueeze(0), [x.shape[0]])
             pose_t, tran_t = y
             
-            vel_t, contact_t = zs[idx]
+            # vel_t, contact_t = zs[idx]
             
             pose_t = art.math.r6d_to_rotation_matrix(pose_t)
 
@@ -107,9 +108,9 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
                 torch.save({'pose_t': pose_t, 
                             'pose_p_online': pose_p_online, 
                             'tran_t': tran_t, 
-                            'tran_p_online': tran_p_online,
-                            'contact_t': contact_t,
-                            'contact_p_online': contact_p_online},
+                            'tran_p_online': tran_p_online},
+                            # 'contact_t': contact_t,
+                            # 'contact_p_online': contact_p_online},
                            save_dir / f"{idx}.pt")
 
     # print joint errors
@@ -140,9 +141,9 @@ if __name__ == '__main__':
     
     fold = 'test'
     
-    if args.dataset not in datasets.test_datasets:
-        fold = 'predict'
-        # raise ValueError(f"Test dataset: {args.dataset} not found.")
+    # if args.dataset not in datasets.test_datasets:
+    #     fold = 'predict'
+    #     # raise ValueError(f"Test dataset: {args.dataset} not found.")
     dataset = PoseDataset(fold=fold, evaluate=args.dataset)
     
     save_dir = Path('data') / 'eval' / args.dataset
