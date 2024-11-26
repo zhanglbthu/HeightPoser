@@ -31,6 +31,8 @@ class PoseDataset(Dataset):
             return self._get_train_files(data_folder)
         elif self.fold == 'test':
             return self._get_test_files()
+        elif self.fold == 'predict':
+            return self._get_predict_files()
         else:
             raise ValueError(f"Unknown data fold: {self.fold}.")
 
@@ -43,9 +45,20 @@ class PoseDataset(Dataset):
     def _get_test_files(self):
         return [datasets.test_datasets[self.evaluate]]
 
+    def _get_predict_files(self):
+        return [datasets.predict_datasets[self.evaluate]]
+    
     def _prepare_dataset(self):
         data_folder = paths.processed_datasets / ('eval' if (self.finetune or self.evaluate) else '')
+        if self.fold == 'predict':
+            data_folder = paths.processed_datasets / 'predict'
+            
+        print(f"Loading {self.fold} data from {data_folder}.")
+            
         data_files = self._get_data_files(data_folder)
+        
+        print(f"data_files: {data_files}")
+        
         data = {key: [] for key in ['imu_inputs', 'pose_outputs', 'joint_outputs', 'tran_outputs', 'vel_outputs', 'foot_outputs']}
         for data_file in tqdm(data_files):
             try:
@@ -119,6 +132,7 @@ class PoseDataset(Dataset):
 
             if not (self.evaluate or self.finetune): # do not finetune translation module
                 self._process_translation_data(joint, tran, foot, data_len, data)
+            # self._process_translation_data(joint, tran, foot, data_len, data)
 
     def _process_translation_data(self, joint, tran, foot, data_len, data):
         root_vel = torch.cat((torch.zeros(1, 3), tran[1:] - tran[:-1]))
@@ -136,7 +150,7 @@ class PoseDataset(Dataset):
 
         if self.evaluate or self.finetune:
             return imu, pose, joint, tran
-
+        
         vel = self.data['vel_outputs'][idx].float()
         contact = self.data['foot_outputs'][idx].float()
 
