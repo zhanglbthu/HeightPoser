@@ -37,6 +37,10 @@ class paths:
     eval_dir = Path("/root/autodl-tmp/mobileposer/eval")
     processed_datasets = Path("/root/autodl-tmp/mobileposer/dataset_work")
 
+    # livedemo record directory
+    temp_dir = Path("data/livedemo/temp")
+    live_record_dir = Path("data/livedemo/record")
+    
 class model_config:
     """MobilePoser Model configurations."""
     # device
