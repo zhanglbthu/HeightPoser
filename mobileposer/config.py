@@ -36,6 +36,10 @@ class paths:
     # processed_datasets = root_dir / "data/processed_datasets"
     eval_dir = Path("/root/autodl-tmp/mobileposer/eval")
     processed_datasets = Path("/root/autodl-tmp/mobileposer/dataset_work")
+    
+    calibrated_totalcapture = Path("/root/autodl-tmp/mobileposer/dataset_raw/TotalCapture/calibrated")
+    raw_totalcapture_official = Path("/root/autodl-tmp/mobileposer/dataset_raw/TotalCapture/official")
+    processed_totalcapture = Path("/root/autodl-tmp/mobileposer/dataset_work/TotalCapture")
 
 class model_config:
     """MobilePoser Model configurations."""
@@ -99,12 +103,16 @@ class datasets:
     imuposer = "imuposer.pt"
     imuposer_train = "imuposer_train.pt"
     imuposer_test = "imuposer_test.pt"
+    
+    # CMU dataset
+    cmu = "cmu.pt"
 
     # Test datasets
     test_datasets = {
         'dip': dip_test,
         'totalcapture': totalcapture,
-        'imuposer': imuposer_test
+        'imuposer': imuposer_test,
+        'cmu': cmu
     }
 
     # Finetune datasets
@@ -114,12 +122,12 @@ class datasets:
     }
 
     # AMASS datasets (add more as they become available in AMASS!)
-    amass_datasets = ['ACCAD', 'BioMotionLab_NTroje', 'BMLhandball', 'BMLmovi', 'CMU', 
-                      'DanceDB', 'DFaust_67', 'EKUT', 'Eyes_Japan_Dataset', 'HUMAN4D',
-                      'HumanEva', 'KIT', 'MPI_HDM05', 'MPI_Limits', 'MPI_mosh', 'SFU',
-                      'SSM_synced', 'TCD_handMocap', 'TotalCapture', 'Transitions_mocap']
+    # amass_datasets = ['ACCAD', 'BioMotionLab_NTroje', 'BMLhandball', 'BMLmovi', 'CMU', 
+    #                   'DanceDB', 'DFaust_67', 'EKUT', 'Eyes_Japan_Dataset', 'HUMAN4D',
+    #                   'HumanEva', 'KIT', 'MPI_HDM05', 'MPI_Limits', 'MPI_mosh', 'SFU',
+    #                   'SSM_synced', 'TCD_handMocap', 'TotalCapture', 'Transitions_mocap']
     
-    # amass_datasets = ['CMU']
+    amass_datasets = ['CMU']
 
     # Root-relative joint positions
     root_relative = False

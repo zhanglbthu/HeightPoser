@@ -10,8 +10,17 @@
             "request": "launch",
             "program": "evaluate.py",
             "console": "integratedTerminal",
-            "args": ["--model", "data/checkpoints/official/weights.pth",
+            "args": ["--model", "data/checkpoints/mobileposer_finetuneddip/model_finetuned.pth",
                      "--dataset", "dip"],
+            "justMyCode": false
+        },
+        {
+            "name": "process totalcapture",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "process.py",
+            "console": "integratedTerminal",
+            "args": ["--dataset", "totalcapture"],
             "justMyCode": false
         }
     ]
