@@ -70,15 +70,35 @@ def vis_contact(viewer: MotionViewer, pose_list, tran_list, contact_list):
         
         viewer.draw_point(glb_joint[0][10], color=value2color(contact_list[i][0]), radius=0.2, render=False)
         viewer.draw_point(glb_joint[0][11], color=value2color(contact_list[i][1]), radius=0.2, render=False)
-    
-def visualize(pose, tran=None, contact=None):
+
+def vis_rheight(viewer: MotionViewer, pose_list, tran_list, rheight_list, offsets=None):
+    for i in range(len(pose_list)):
+        pose = torch.tensor(pose_list[i]).unsqueeze(0)
+        tran = torch.tensor(tran_list[i]).unsqueeze(0)
+        
+        _, _, glb_verts = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
+        
+        pos1 = glb_verts[0, vi_mask[0]]
+        pos2 = glb_verts[0, vi_mask[3]]
+        
+        if offsets:
+
+            pos1 = pos1 + torch.tensor(offsets[i])
+            pos2 = pos2 + torch.tensor(offsets[i])
+        
+        h = rheight_list[i].cpu()
+        viewer.draw_point(pos1, color=[255, 0, 0], radius=0.05, render=False)
+        viewer.draw_point(pos2, color=[255, 0, 0], radius=0.05, render=False)
+        viewer.draw_line(pos1, [pos1[0], pos1[1]-h, pos1[2]], color=[255, 0, 0], width=0.02, render=False)
+
+def visualize(pose, tran=None, rheight=None):
     '''
     pose: [pose_sub1, pose_sub2, ...]
     tran: [tran_sub1, tran_sub2, ...]
     '''
     clock = Clock()
     sub_num = len(pose)
-    with MotionViewer(sub_num, overlap=True, names=["gt", "MobilePoser", "MobilePoser_editH"]) as viewer:
+    with MotionViewer(sub_num, overlap=False, names=["gt", "MobilePoser", "MobilePoser_editH"]) as viewer:
         for i in range(len(pose[0])):
             clock.tick(60)
             viewer.clear_line(render=False)
@@ -88,11 +108,13 @@ def visualize(pose, tran=None, contact=None):
             if tran:
                 tran_list = [tran[sub_idx][i] for sub_idx in range(sub_num)]
             else:
-                tran_list = [torch.zeros(3) for _ in range(sub_num)]
+                # generate zero tran on cpu
+                tran_list = [torch.zeros(1, 3).cpu() for _ in range(sub_num)]
+
             
-            if contact:
-                contact_list = [contact[sub_idx][i] for sub_idx in range(sub_num)]
-                vis_contact(viewer, pose_list, tran_list, contact_list)
+            if rheight:
+                rheight_list = [rheight[sub_idx][i] for sub_idx in range(sub_num)]
+                vis_rheight(viewer, pose_list, tran_list, rheight_list, offsets=viewer.offsets)
             
             viewer.update_all(pose_list, tran_list, render=False)
             
@@ -100,7 +122,7 @@ def visualize(pose, tran=None, contact=None):
             
             print('\r', clock.get_fps(), end='')
 
-def process_mobileposer_data(data):
+def process_mobileposer_data(data, relative_height = False):
     pose_t = data['pose_t']
     pose_p = data['pose_p_online']
     
@@ -119,11 +141,20 @@ def process_mobileposer_data(data):
     # 将tran_t和tran_p的第一帧align到一起
     tran_t = tran_t - tran_t[0] + tran_p[0]
     
+    if relative_height:
+        rheight_t = data['rheight']
+
+        _, _, vert = body_model.forward_kinematics(pose_p, calc_mesh=True)
+        
+        rheight_p = vert[:, vi_mask[0], 1] - vert[:, vi_mask[3], 1]
+        
+        rheight_p = rheight_p.view(-1, 1)
+        
+        return pose_t, pose_p, tran_t, tran_p, rheight_t, rheight_p
+    
     return pose_t, pose_p, tran_t, tran_p
 
 def edit_height(pose_t, tran_t):
-    
-    vi_mask = torch.tensor([1961, 5424, 876, 4362, 411, 3021])
     
     _, _, vert = body_model.forward_kinematics(pose_t, tran=tran_t, calc_mesh=True)
     
@@ -132,23 +163,11 @@ def edit_height(pose_t, tran_t):
     return tran_t_y
 
 if __name__ == '__main__':
-    data_dir = 'data/eval/mobileposer/cmu'
-    data_dir2 = 'data/eval/mobileposer_rh/cmu'
+    data_dir = 'data/eval/mobileposer_rh/totalcapture'
     
     data_path = os.path.join(data_dir, '4.pt')
     data = torch.load(data_path)
     
-    data_path2 = os.path.join(data_dir2, '4.pt')
-    data2 = torch.load(data_path2)
+    pose_t, pose_p, tran_t, tran_p, rheight_t, rheight_p = process_mobileposer_data(data, relative_height=True)
     
-    pose_t, pose_p, tran_t, tran_p = process_mobileposer_data(data)
-    _, pose_p2, _, tran_p2 = process_mobileposer_data(data2)
-    
-    tran_t_y = edit_height(pose_t, tran_t)   
-    
-    tran_p3 = tran_p2.clone()
-    tran_p3[:, 1] = tran_t_y
-    
-    visualize([pose_t, pose_p, pose_p2], [tran_t, tran_p, tran_p3])
-        
-    # visualize([pose_t, pose_p, pose_p2], [tran_t, tran_p, tran_p2])
+    visualize([pose_t, pose_p], rheight=[rheight_t, rheight_p])

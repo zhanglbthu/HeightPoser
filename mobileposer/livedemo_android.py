@@ -17,6 +17,8 @@ from auxiliary import calibrate_q, quaternion_inverse
 
 from mobileposer.utils.model_utils import load_model
 from mobileposer.models import MobilePoserNet
+from mobileposer.data import PoseDataset
+import sys
 
 class IMUSet:
     g = 9.8
@@ -100,14 +102,20 @@ if __name__ == '__main__':
     os.makedirs(paths.temp_dir, exist_ok=True)
     os.makedirs(paths.live_record_dir, exist_ok=True)
     
+    device = torch.device("cuda")
+    
     clock = Clock()
     
     # set network
     ckpt_path = "data/checkpoints/mobileposer_finetuneddip/model_finetuned.pth"
     net = load_model(ckpt_path)
     print('Model loaded.')
+    
+    # # set test data (optional)
+    # dataset = PoseDataset(fold='test', evaluate='dip')
+    # xs, ys = zip(*[(imu.to(device), (pose.to(device), tran)) for imu, pose, joint, tran in dataset])
 
-    # set imu and calibration
+    # region: set imu and calibration
     imu_set = IMUSet()
     sensor_set = WearableSensorSet()
     
@@ -137,12 +145,17 @@ if __name__ == '__main__':
     data = {'RMI': RMI, 'RSB': RSB, 'aM': [], 'RMB': []}
     
     imu_set.clear()
-    
+    # endregion
+
     accs, oris = [], []
+    poses, trans = [], []
     
-    with MotionViewer(1, names=['Wearable Sensors']) as viewer:
+    net.eval()
+    with torch.no_grad(), MotionViewer(1, names=['Wearable Sensors']) as viewer:
         while True:
             clock.tick(60)
+            
+            # region: read noitom and sensor data
             tframe, RIS, aI = imu_set.get()
             
             sensor_data = sensor_set.get()
@@ -174,13 +187,20 @@ if __name__ == '__main__':
             
             # select combo
             combo = [0, 3, 4]
-            aM, RMB = aM[combo], RMB[combo]
+            
+            aM = aM[combo] / amass.acc_scale
+            RMB = RMB[combo]
+            # endregion
+            
             input = torch.cat([aM.flatten(), RMB.flatten()], dim=0).to("cuda")  
             
             pose, _, tran, _ = net.forward_online(input)
             
             data['aM'].append(aM)
             data['RMB'].append(RMB)
+            
+            poses.append(pose)
+            trans.append(tran)
             
             # convert tensor to numpy
             pose = pose.cpu().numpy()
@@ -192,6 +212,13 @@ if __name__ == '__main__':
             print('\r', clock.get_fps(), end='')
 
             if keyboard.is_pressed('q'):
+                # save oris, accs, trans and poses
+                sub_dir = 'test' + datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+                os.makedirs(os.path.join(paths.live_record_dir, sub_dir), exist_ok=True)
+                torch.save(oris, os.path.join(paths.live_record_dir, sub_dir, 'oris.pt'))
+                torch.save(accs, os.path.join(paths.live_record_dir, sub_dir, 'accs.pt'))
+                torch.save(poses, os.path.join(paths.live_record_dir, sub_dir, 'poses.pt'))
+                torch.save(trans, os.path.join(paths.live_record_dir, sub_dir, 'trans.pt'))
                 break
             
             print(f'\rfps: {clock.get_fps():.2f}', end='')

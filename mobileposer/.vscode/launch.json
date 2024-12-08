@@ -4,6 +4,7 @@
     // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+
         {
             "name": "evaluate dip",
             "type": "debugpy",
@@ -12,6 +13,17 @@
             "console": "integratedTerminal",
             "args": ["--model", "data/checkpoints/official/weights.pth",
                      "--dataset", "dip"],
+            "justMyCode": false
+        },
+
+        {
+            "name": "livedemo",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "livedemo_android.py",
+            "console": "integratedTerminal",
+            // "args": ["--model", "data/checkpoints/mobileposer_finetuneddip/model_finetuned.pth",
+            //          "--dataset", "dip"],
             "justMyCode": false
         }
     ]

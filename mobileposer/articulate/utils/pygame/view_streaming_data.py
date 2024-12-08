@@ -79,6 +79,54 @@ class StreamingDataViewer:
             self.screen = None
             pygame.quit()
 
+    def update_y(self):
+        y_data = []
+        for y in self.ys:
+            data = np.asarray(y)
+            y_data.extend(data)
+
+        glb_min = min(y_data)
+        glb_max = max(y_data)
+        
+        if glb_min == glb_max:
+            y_min = glb_min - 1
+            y_max = glb_max + 1
+        else:
+            padding = (glb_max - glb_min) * 0
+            y_min = glb_min - padding
+            y_max = glb_max + padding
+            
+        # update y range
+        self.y_range = (y_min, y_max)
+        
+        # save glb y range
+        self.gt_y_range = (glb_min, glb_max)
+        
+        # compute dy
+        self.dy = self.H / (self.y_range[1] - self.y_range[0])
+    
+    def draw_y(self):
+        # 创建一个字体对象（如果在其他地方已经有font对象可直接使用）
+        font = pygame.font.SysFont('Arial', self.font_size)
+
+        y_min, y_max = self.y_range
+        # 刻度数量，可根据需要调整
+        num_ticks = 10
+        
+        for i in range(1, num_ticks):
+            # 计算刻度对应的真实数据值
+            value = y_min + i * (y_max - y_min) / num_ticks
+            # 将数据值映射回屏幕坐标
+            y_pos = self.H - (value - y_min) * self.dy
+            
+            # 绘制刻度线(例如在x=50的地方画刻度线)
+            pygame.draw.line(self.screen, (0, 0, 0), (75, y_pos), (90, y_pos), 1)
+
+            # 绘制刻度值
+            label = font.render(f"{value:.3f}", True, (0, 0, 0))
+            # 将文字贴在左侧（例如x=10）
+            self.screen.blit(label, (10, y_pos - self.font_size/2))
+
     def plot(self, values):
         r"""
         Plot all current values.
@@ -90,6 +138,10 @@ class StreamingDataViewer:
             return
         assert len(values) == self.n, 'Number of data is not equal to the init value in StreamingDataViewer.'
         self.screen.fill((255, 255, 255))
+        
+        self.update_y()
+        self.draw_y()
+        
         for i, v in enumerate(values):
             self.ys[i].append(float(v))
             data = np.asarray(self.ys[i])
