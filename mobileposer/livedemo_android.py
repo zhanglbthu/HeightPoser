@@ -107,13 +107,9 @@ if __name__ == '__main__':
     clock = Clock()
     
     # set network
-    ckpt_path = "data/checkpoints/mobileposer_finetuneddip/model_finetuned.pth"
+    ckpt_path = "data/checkpoints/mobileposer_rheight_finetuneddip/model_finetuned.pth"
     net = load_model(ckpt_path)
     print('Model loaded.')
-    
-    # # set test data (optional)
-    # dataset = PoseDataset(fold='test', evaluate='dip')
-    # xs, ys = zip(*[(imu.to(device), (pose.to(device), tran)) for imu, pose, joint, tran in dataset])
 
     # region: set imu and calibration
     imu_set = IMUSet()

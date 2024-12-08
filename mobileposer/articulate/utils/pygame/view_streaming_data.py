@@ -119,8 +119,8 @@ class StreamingDataViewer:
             # 将数据值映射回屏幕坐标
             y_pos = self.H - (value - y_min) * self.dy
             
-            # 绘制刻度线(例如在x=50的地方画刻度线)
-            pygame.draw.line(self.screen, (0, 0, 0), (75, y_pos), (90, y_pos), 1)
+            # # 绘制刻度线(例如在x=50的地方画刻度线)
+            # pygame.draw.line(self.screen, (0, 0, 0), (75, y_pos), (90, y_pos), 1)
 
             # 绘制刻度值
             label = font.render(f"{value:.3f}", True, (0, 0, 0))
