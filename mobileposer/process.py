@@ -64,6 +64,9 @@ def process_amass():
         print("\rReading", ds_name)
 
         for npz_fname in tqdm(sorted(glob.glob(os.path.join(paths.raw_amass, ds_name, "*/*_poses.npz")))):
+            # 如果npz_frame不以36开头，那么就跳过
+            if not npz_fname.split("/")[-1].startswith("36"):
+                continue
             
             try: cdata = np.load(npz_fname)
             except: continue
@@ -143,9 +146,9 @@ def process_totalcapture():
 
     subjects = ['S1', 'S2', 'S3', 'S4', 'S5']
 
-    # Load poses from processed AMASS dataset
-    amass_tc = torch.load(os.path.join(paths.processed_datasets, "AMASS", "TotalCapture", "pose.pt"))
-    tc_poses = {pose.shape[0]: pose for pose in amass_tc}
+    # # Load poses from processed AMASS dataset
+    # amass_tc = torch.load(os.path.join(paths.processed_datasets, "AMASS", "TotalCapture", "pose.pt"))
+    # tc_poses = {pose.shape[0]: pose for pose in amass_tc}
 
     processed, failed_to_process = [], []
     accs, oris, poses, trans = [], [], [], []
@@ -154,8 +157,8 @@ def process_totalcapture():
             continue
 
         data = pickle.load(open(os.path.join(paths.calibrated_totalcapture, file), 'rb'), encoding='latin1')
-        ori = torch.from_numpy(data['ori']).float()
-        acc = torch.from_numpy(data['acc']).float()
+        ori = torch.from_numpy(data['ori']).float() # [N, 6, 3, 3]
+        acc = torch.from_numpy(data['acc']).float() # [N, 6, 3]
 
         # Load pose data from AMASS
         try: 
@@ -163,12 +166,22 @@ def process_totalcapture():
             subject, activity = name_split[0], name_split[1].split(".")[0]
             pose_npz = np.load(os.path.join(paths.raw_amass, "TotalCapture", subject, f"{activity}_poses.npz"))
             pose = torch.from_numpy(pose_npz['poses']).float().view(-1, 52, 3)
+            
+            # include the left and right index fingers in the pose
+            pose[:, 23] = pose[:, 37]     # right hand
+            pose = pose[:, :24].clone()   # only use body + right and left fingers
+            
+            # align AMASS global frame with DIP
+            amass_rot = torch.tensor([[[1, 0, 0], [0, 0, 1], [0, -1, 0.]]])
+            pose[:, 0] = math.rotation_matrix_to_axis_angle(
+                amass_rot.matmul(math.axis_angle_to_rotation_matrix(pose[:, 0])))
+            
         except:
             failed_to_process.append(f"{subject}_{activity}")
             print(f"Failed to Process: {file}")
             continue
 
-        pose = tc_poses[pose.shape[0]]
+        # pose = tc_poses[pose.shape[0]]
     
         # acc/ori and gt pose do not match in the dataset
         if acc.shape[0] < pose.shape[0]:
