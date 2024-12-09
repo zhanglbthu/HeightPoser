@@ -35,12 +35,13 @@ class paths:
     # eval_dir = root_dir / "data/processed_datasets/eval"
     # processed_datasets = root_dir / "data/processed_datasets"
     eval_dir = Path("/root/autodl-tmp/mobileposer/eval")
-    processed_datasets = Path("/root/autodl-tmp/mobileposer/dataset_work")
-    
-    calibrated_totalcapture = Path("/root/autodl-tmp/mobileposer/dataset_raw/TotalCapture/calibrated")
-    raw_totalcapture_official = Path("/root/autodl-tmp/mobileposer/dataset_raw/TotalCapture/official")
-    processed_totalcapture = Path("/root/autodl-tmp/mobileposer/dataset_work/TotalCapture")
+    # processed_datasets = Path("/root/autodl-tmp/mobileposer/dataset_work")
+    processed_datasets = Path("data/dataset_work")
 
+    # livedemo record directory
+    temp_dir = Path("data/livedemo/temp")
+    live_record_dir = Path("data/livedemo/record")
+    
 class model_config:
     """MobilePoser Model configurations."""
     # device
@@ -103,16 +104,20 @@ class datasets:
     imuposer = "imuposer.pt"
     imuposer_train = "imuposer_train.pt"
     imuposer_test = "imuposer_test.pt"
+
+    # uneven terrain dataset
+    cmu = "CMU.pt"
     
-    # CMU dataset
-    cmu = "cmu.pt"
+    # Predict datasets
+    predict_datasets = {
+        'cmu': cmu
+    }
 
     # Test datasets
     test_datasets = {
         'dip': dip_test,
         'totalcapture': totalcapture,
-        'imuposer': imuposer_test,
-        'cmu': cmu
+        'imuposer': imuposer_test
     }
 
     # Finetune datasets

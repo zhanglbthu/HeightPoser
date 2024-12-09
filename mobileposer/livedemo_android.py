@@ -18,6 +18,8 @@ from auxiliary import calibrate_q, quaternion_inverse
 from mobileposer.utils.model_utils import load_model
 from mobileposer.models import MobilePoserNet
 from mobileposer.data import PoseDataset
+from kalman import KalmanFilter
+import numpy as np
 import sys
 
 class IMUSet:
@@ -103,21 +105,36 @@ if __name__ == '__main__':
     os.makedirs(paths.live_record_dir, exist_ok=True)
     
     device = torch.device("cuda")
-    
+    imu_set = IMUSet()
+    sensor_set = WearableSensorSet()
     clock = Clock()
     
-    # set network
+    k = - 800
+    
+    # region: calculate sensors pressure bias
+    pressures = {"sensor0": [], "sensor1": []}
+    while True:
+        data = sensor_set.get()
+        if 0 in data.keys() and 1 in data.keys():
+            pressures["sensor0"].append(data[0].pressure)
+            pressures["sensor1"].append(data[1].pressure)
+            if len(pressures["sensor0"]) > 100:
+                p_bias = np.mean(pressures["sensor0"]) - np.mean(pressures["sensor1"])
+                print('p_bias:', p_bias)
+                break
+    # endregion
+    
+    # region: set network
     ckpt_path = "data/checkpoints/mobileposer_rheight_finetuneddip/model_finetuned.pth"
     net = load_model(ckpt_path)
     print('Model loaded.')
+    # endregion
 
-    # region: set imu and calibration
-    imu_set = IMUSet()
-    sensor_set = WearableSensorSet()
+    # region: align noitom and sensor imu data
     
     r"""calibration"""
     print('Rotate the sensor & imu together.')
-    n_calibration = 2
+    n_calibration = 1
     qIC_list, qOS_list = [], []
     
     for i in range(n_calibration):
@@ -136,17 +153,40 @@ if __name__ == '__main__':
         print('\tfinished\nqCI:', qCI, '\tqSO:', qSO)
         qIC_list.append(quaternion_inverse(qCI))
         qOS_list.append(quaternion_inverse(qSO))
+    # endregion
     
+    # region: align inertial and global coordinate & T-pose calibration
     RMI, RSB = tpose_calibration(n_calibration)
-    data = {'RMI': RMI, 'RSB': RSB, 'aM': [], 'RMB': []}
+    # endregion
+    
+    # region: calculate height bias
+    b_window = 100
+    bs = []
+    while True:
+        data = sensor_set.get()
+        if 0 in data.keys():
+            pressure = data[0].pressure
+            bs.append(k * pressure)
+            if len(bs) > b_window:
+                h_bias = - np.mean(bs)
+                print('h_bias:', h_bias)
+                break
+    # endregion
+    
+    # set kalman filter
+    kfs = [KalmanFilter(k, h_bias) for _ in range(n_calibration)]
     
     imu_set.clear()
-    # endregion
-
+    
     accs, oris = [], []
     poses, trans = [], []
+    data = {'RMI': RMI, 'RSB': RSB, 'aM': [], 'RMB': []}
     
     net.eval()
+    
+    from articulate.utils.pygame import StreamingDataViewer
+    sviewer = StreamingDataViewer(2, y_range=(-10, 10), window_length=500, names=['noitom', 'phone']); sviewer.connect()
+    
     with torch.no_grad(), MotionViewer(1, names=['Wearable Sensors']) as viewer:
         while True:
             clock.tick(60)
@@ -156,6 +196,8 @@ if __name__ == '__main__':
             
             sensor_data = sensor_set.get()
             
+            heights = []
+            
             for i in range(n_calibration):
                 qCO_sensor = torch.tensor(sensor_data[i].orientation).float()
                 aSS_sensor = torch.tensor(sensor_data[i].raw_acceleration).float() # [3]
@@ -163,6 +205,9 @@ if __name__ == '__main__':
                 RIS_sensor = art.math.quaternion_to_rotation_matrix(qIS_sensor) # [1, 3, 3]
                 
                 aIS_sensor = RIS_sensor.squeeze(0).mm( - aSS_sensor.unsqueeze(-1)).squeeze(-1) + torch.tensor([0., 0., 9.8]) 
+                
+                sviewer.plot([aI[0][0], aIS_sensor[0]])
+                break
                 
                 if i == 0:
                     index = 3
@@ -172,52 +217,65 @@ if __name__ == '__main__':
                 RIS[index, :, :] = RIS_sensor[0, :, :]
 
                 aI[index, :] = aIS_sensor
+                
+                pressure = sensor_data[i].pressure
+                
+                if i == 1:
+                    pressure += p_bias
+                
+                z = np.array([[pressure]])
+                kfs[i].predict()
+                kfs[i].update(z)
+                h_filtered = kfs[i].get_height() * 0.01
+                heights.append(h_filtered)
             
-            RMB = RMI.matmul(RIS).matmul(RSB) # [6, 3, 3]
-            aM = aI.mm(RMI.t()) # [6, 3]
+            # RMB = RMI.matmul(RIS).matmul(RSB) # [6, 3, 3]
+            # aM = aI.mm(RMI.t()) # [6, 3]
             
-            oris.append(RMB)
-            accs.append(aM)
+            # oris.append(RMB)
+            # accs.append(aM)
             
-            # pose, tran = net.forward_frame(aM.view(1, 6, 3), RMB.view(1, 6, 3, 3))
+            # # select combo
+            # combo = [0, 3, 4]
             
-            # select combo
-            combo = [0, 3, 4]
+            # aM = aM[combo] / amass.acc_scale
+            # RMB = RMB[combo]
+            # # endregion
             
-            aM = aM[combo] / amass.acc_scale
-            RMB = RMB[combo]
-            # endregion
+            # # compute relative height
+            # rheight = torch.tensor([heights[1] - heights[0]]).float()
+            # print(rheight)
             
-            input = torch.cat([aM.flatten(), RMB.flatten()], dim=0).to("cuda")  
+            # input = torch.cat([aM.flatten(), RMB.flatten(), rheight], dim=0).to("cuda")  
             
-            pose, _, tran, _ = net.forward_online(input)
+            # pose, _, tran, _ = net.forward_online(input)
             
-            data['aM'].append(aM)
-            data['RMB'].append(RMB)
+            # data['aM'].append(aM)
+            # data['RMB'].append(RMB)
             
-            poses.append(pose)
-            trans.append(tran)
+            # poses.append(pose)
+            # trans.append(tran)
             
-            # convert tensor to numpy
-            pose = pose.cpu().numpy()
-            tran = tran.cpu().numpy()
+            # # convert tensor to numpy
+            # pose = pose.cpu().numpy()
+            # tran = tran.cpu().numpy()
             
-            viewer.update_all([pose], [tran], render=False)
-            viewer.render()
+            # viewer.update_all([pose], [tran], render=False)
+            # viewer.render()
             
-            print('\r', clock.get_fps(), end='')
+            # print('\r', clock.get_fps(), end='')
 
-            if keyboard.is_pressed('q'):
-                # save oris, accs, trans and poses
-                sub_dir = 'test' + datetime.datetime.now().strftime('%Y%m%d%H%M%S')
-                os.makedirs(os.path.join(paths.live_record_dir, sub_dir), exist_ok=True)
-                torch.save(oris, os.path.join(paths.live_record_dir, sub_dir, 'oris.pt'))
-                torch.save(accs, os.path.join(paths.live_record_dir, sub_dir, 'accs.pt'))
-                torch.save(poses, os.path.join(paths.live_record_dir, sub_dir, 'poses.pt'))
-                torch.save(trans, os.path.join(paths.live_record_dir, sub_dir, 'trans.pt'))
-                break
+            # if keyboard.is_pressed('q'):
+            #     # save oris, accs, trans and poses
+            #     sub_dir = 'test' + datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+            #     os.makedirs(os.path.join(paths.live_record_dir, sub_dir), exist_ok=True)
+            #     torch.save(oris, os.path.join(paths.live_record_dir, sub_dir, 'oris.pt'))
+            #     torch.save(accs, os.path.join(paths.live_record_dir, sub_dir, 'accs.pt'))
+            #     torch.save(poses, os.path.join(paths.live_record_dir, sub_dir, 'poses.pt'))
+            #     torch.save(trans, os.path.join(paths.live_record_dir, sub_dir, 'trans.pt'))
+            #     break
             
-            print(f'\rfps: {clock.get_fps():.2f}', end='')
+            # print(f'\rfps: {clock.get_fps():.2f}', end='')
 
     oris = torch.stack(oris)
     accs = torch.stack(accs)
