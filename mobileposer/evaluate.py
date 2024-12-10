@@ -44,7 +44,7 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
     device = model_config.device
 
     # load data
-    # xs: [contact_seq_num, N, 60], ys: ([contact_seq_num, N, 144], [contact_seq_num, N, 3])
+    # xs: [contact_seq_num, N, 61], ys: ([contact_seq_num, N, 144], [contact_seq_num, N, 3])
     xs, ys = zip(*[(imu.to(device), (pose.to(device), tran)) for imu, pose, joint, tran in dataset])
 
     # setup Pose Evaluator
@@ -57,11 +57,13 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
     model.eval()
     with torch.no_grad():
         for idx, (x, y) in enumerate(tqdm.tqdm(zip(xs, ys), total=len(xs))):
-            # x: [N, 60], y: ([N, 144], [N, 3])
+            # x: [N, 61], y: ([N, 144], [N, 3])
             model.reset()
             pose_p_offline, joint_p_offline, tran_p_offline, _ = model.forward_offline(x.unsqueeze(0), [x.shape[0]])
             pose_t, tran_t = y
             pose_t = art.math.r6d_to_rotation_matrix(pose_t)
+            
+            rheight = x[:, -1].view(-1, 1)
 
             if getenv("ONLINE"):
                 online_results = [model.forward_online(f) for f in torch.cat((x, x[-1].repeat(num_future_frame, 1)))]
@@ -101,7 +103,11 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
             
             # save pose_t, pose_p_online, tran_t, tran_p_online to one .pt file
             if save_dir:
-                torch.save({'pose_t': pose_t, 'pose_p_online': pose_p_online, 'tran_t': tran_t, 'tran_p_online': tran_p_online},
+                torch.save({'pose_t': pose_t, 
+                            'pose_p_online': pose_p_online, 
+                            'tran_t': tran_t, 
+                            'tran_p_online': tran_p_online,
+                            'rheight': rheight},
                            save_dir / f"{idx}.pt")
 
     # print joint errors

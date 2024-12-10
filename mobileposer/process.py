@@ -152,6 +152,7 @@ def process_totalcapture():
 
     processed, failed_to_process = [], []
     accs, oris, poses, trans = [], [], [], []
+    rheights = []
     for file in sorted(os.listdir(paths.calibrated_totalcapture)):
         if not file.endswith(".pkl") or ('s5' in file and 'acting3' in file) or not any(file.startswith(s.lower()) for s in subjects):
             continue
@@ -223,11 +224,12 @@ def process_totalcapture():
             trans[i] = trans[i][:accs[i].shape[0]]
         assert trans[i].shape[0] == accs[i].shape[0]
 
-    # remove acceleration bias
+    # remove acceleration bias and add relative height
     for iacc, pose, tran in zip(accs, poses, trans):
         pose = pose.view(-1, 24, 3, 3)
         _, _, vert = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
         vacc = _syn_acc(vert[:, vi_mask])
+        rheights.append(_relative_height(vert))
         for imu_id in range(6):
             for i in range(3):
                 d = -iacc[:, imu_id, i].mean() + vacc[:, imu_id, i].mean()
@@ -237,7 +239,8 @@ def process_totalcapture():
         'acc': accs,
         'ori': oris,
         'pose': poses,
-        'tran': trans
+        'tran': trans,
+        'rheight': rheights
     }
     data_path = paths.eval_dir / "totalcapture.pt"
     torch.save(data, data_path)
