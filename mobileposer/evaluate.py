@@ -35,6 +35,38 @@ class PoseEvaluator:
                                   'Positional Error (cm)', 'Masked Positional Error (cm)', 'Mesh Error (cm)', 
                                   'Jitter Error (100m/s^3)', 'Distance Error (cm)']):
             print('%s: %.2f (+/- %.2f)' % (name, errors[i, 0], errors[i, 1]))
+            
+    @staticmethod
+    def print_single(errors, file=None):
+        metric_names = [
+            'SIP Error (deg)', 
+            'Angular Error (deg)', 
+            'Masked Angular Error (deg)',
+            'Positional Error (cm)', 
+            'Masked Positional Error (cm)', 
+            'Mesh Error (cm)', 
+            'Jitter Error (100m/s^3)', 
+            'Distance Error (cm)'
+        ]
+
+        # 找出最长的指标名，以便统一对齐
+        max_len = max(len(name) for name in metric_names)
+
+        # 将每个指标的输出字符串保存到列表中，最后 join 成一行输出
+        output_parts = []
+        for i, name in enumerate(metric_names):
+            if name in ['Angular Error (deg)', 'Mesh Error (cm)']:
+                # 对这类指标使用“均值 ± 方差”的格式
+                output_str = f"{name:<{max_len}}: {errors[i,0]:.2f}"
+            else:
+                continue
+            
+            output_parts.append(output_str)
+
+        # 最终打印为一行
+        print(" | ".join(output_parts), file=file)
+        # 如果需要在末尾换行，print 本身就会换行，无需额外操作
+
 
 
 @torch.no_grad()
@@ -114,11 +146,15 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
                            save_dir / f"{idx}.pt")
 
     # print joint errors
-    print('============== offline ================')
-    evaluator.print(torch.stack(offline_errs).mean(dim=0))
-    if getenv("ONLINE"):
-        print('============== online ================')
-        evaluator.print(torch.stack(online_errs).mean(dim=0))
+    # print('============== offline ================')
+    # evaluator.print(torch.stack(offline_errs).mean(dim=0))
+    # if getenv("ONLINE"):
+    #     print('============== online ================')
+    #     evaluator.print(torch.stack(online_errs).mean(dim=0))
+    
+    for online_err in online_errs:
+        with open('data/eval/quantitative/totalcapture.txt', 'a', encoding='utf-8') as f:
+            evaluator.print_single(online_err, file=f)
     
     # print translation errors
     if evaluate_tran:
