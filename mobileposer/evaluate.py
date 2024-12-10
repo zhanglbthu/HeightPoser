@@ -148,12 +148,12 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
     # print joint errors
     # print('============== offline ================')
     # evaluator.print(torch.stack(offline_errs).mean(dim=0))
-    # if getenv("ONLINE"):
-    #     print('============== online ================')
-    #     evaluator.print(torch.stack(online_errs).mean(dim=0))
+    if getenv("ONLINE"):
+        print('============== online ================')
+        evaluator.print(torch.stack(online_errs).mean(dim=0))
     
     for online_err in online_errs:
-        with open('data/eval/quantitative/totalcapture.txt', 'a', encoding='utf-8') as f:
+        with open('data/eval/quantitative/mobileposer_wphys/imuposer.txt', 'a', encoding='utf-8') as f:
             evaluator.print_single(online_err, file=f)
     
     # print translation errors

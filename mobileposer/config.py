@@ -42,6 +42,11 @@ class paths:
     temp_dir = Path("data/livedemo/temp")
     live_record_dir = Path("data/livedemo/record")
     
+    # physics optimization
+    physics_model_file = 'models/physics.urdf'      # physics body model path
+    plane_file = 'models/plane.urdf'                # (for debug) path to plane.urdf    Please put plane.obj next to it.
+    physics_parameter_file = 'physics_parameters.json'   # physics hyperparameters
+    
 class model_config:
     """MobilePoser Model configurations."""
     # device

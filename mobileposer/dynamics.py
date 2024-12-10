@@ -4,8 +4,8 @@ import pybullet as p
 import articulate as art
 from articulate.utils.bullet import *
 from articulate.utils.rbdl import *
-from utils import *
-from utils import smpl_to_rbdl, rbdl_to_smpl, Body, set_pose
+from auxiliary import *
+from auxiliary import smpl_to_rbdl, rbdl_to_smpl, Body, set_pose
 from qpsolvers import solve_qp
 from config import paths
 
@@ -50,10 +50,11 @@ class PhysicsOptimizer:
         self.qdot = np.zeros(self.model.qdot_size)
 
     def optimize_frame(self, pose, jvel, contact, acc, return_grf=False):
+        pose = pose.clone().detach().cpu().numpy() # * convert to numpy
         q_ref = smpl_to_rbdl(pose, torch.zeros(3))[0]
-        v_ref = jvel.numpy()
-        c_ref = contact.sigmoid().numpy()
-        a_ref = acc.numpy()
+        v_ref = jvel.cpu().numpy()
+        c_ref = contact.sigmoid().cpu().numpy()
+        a_ref = acc.cpu().numpy()
         q = self.q
         qdot = self.qdot
 

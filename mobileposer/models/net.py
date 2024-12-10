@@ -166,9 +166,16 @@ class MobilePoserNet(L.LightningModule):
 
             pose_opt, tran_opt = [], []
             for p, c, v, a in tqdm(zip(pose, contact, joint_velocity, acc), total=len(pose)):
-                p, t = self.dynamics_optimizer.optimize_frame(p, v, c, a)
-                pose_opt.append(p)
-                tran_opt.append(t)
+                p_opt, t_opt = self.dynamics_optimizer.optimize_frame(p, v, c, a)
+                
+                if isinstance(p_opt, np.ndarray):
+                    p_opt = torch.tensor(p_opt)
+                if isinstance(tran, np.ndarray):
+                    t_opt = torch.tensor(t_opt)
+                
+                pose_opt.append(p_opt)
+                tran_opt.append(t_opt)
+            
             pose, _ = torch.stack(pose_opt), torch.stack(tran_opt).unsqueeze(0)
 
         return pose, pred_joints, tran, contact
