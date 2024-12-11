@@ -170,8 +170,9 @@ def gen_amass_floor():
         return True  # 所有帧都有至少一只脚接触地面
     
     def _get_heights(vert, ground):
-        pocket_height = vert[:, vi_mask[3], 1] - ground
-        wrist_height = vert[:, vi_mask[0], 1] - ground
+        pocket = vert[:, vi_mask[3], 1].unsqueeze(1)
+        pocket_height = vert[:, vi_mask[3], 1].unsqueeze(1) - ground
+        wrist_height = vert[:, vi_mask[0], 1].unsqueeze(1) - ground
         
         # return [N, 2]
         return torch.stack((pocket_height, wrist_height), dim=1)
@@ -281,10 +282,10 @@ def gen_amass_floor():
             out_contact.append(_foot_ground_probs(joint).clone()) # N, 2
             out_vrot.append(grot[:, ji_mask])  # N, 6, 3, 3
             # out_ground.append(ground)
-            out_heights.append(_get_heights(vert, ground))
+            out_heights.append(_get_heights(vert, ground).squeeze())
             
             b += l
-
+        
         print("Saving...")
         # print(out_vacc.shape, out_pose.shape)
         data = {
