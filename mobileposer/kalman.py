@@ -36,7 +36,7 @@ class KalmanFilter:
         ])
         
         # 定义观测噪声协方差矩阵
-        self.R = np.array([[0.015]])  # 观测噪声协方差矩阵
+        self.R = np.array([[1e-3]])  # 观测噪声协方差矩阵
         
         self.I = np.eye(self.F.shape[0])  
 

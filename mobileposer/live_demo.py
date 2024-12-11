@@ -186,7 +186,7 @@ if __name__ == '__main__':
         server_for_unity.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         server_for_unity.bind(('0.0.0.0', 8889))
         server_for_unity.listen(1)
-        print('Server start. Waiting for unity3d to connect.')
+        # print('Server start. Waiting for unity3d to connect.')
         conn, addr = server_for_unity.accept()
 
     running = True

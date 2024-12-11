@@ -2,7 +2,6 @@ from pygame.time import Clock
 import articulate as art
 from articulate.utils.unity import MotionViewer
 from utils import *
-from pygame.time import Clock
 from config import paths
 import torch
 import os
@@ -98,7 +97,7 @@ def visualize(pose, tran=None, rheight=None):
     '''
     clock = Clock()
     sub_num = len(pose)
-    with MotionViewer(sub_num, overlap=False, names=["gt", "MobilePoser", "MobilePoser_editH"]) as viewer:
+    with MotionViewer(sub_num, overlap=True, names=["gt", "MobilePoser", "MobilePoser_editH"]) as viewer:
         for i in range(len(pose[0])):
             clock.tick(60)
             viewer.clear_line(render=False)
@@ -111,7 +110,6 @@ def visualize(pose, tran=None, rheight=None):
                 # generate zero tran on cpu
                 tran_list = [torch.zeros(1, 3).cpu() for _ in range(sub_num)]
 
-            
             if rheight:
                 rheight_list = [rheight[sub_idx][i] for sub_idx in range(sub_num)]
                 vis_rheight(viewer, pose_list, tran_list, rheight_list, offsets=viewer.offsets)
@@ -163,11 +161,11 @@ def edit_height(pose_t, tran_t):
     return tran_t_y
 
 if __name__ == '__main__':
-    data_dir = 'data/eval/mobileposer_rh/totalcapture'
+    data_dir = 'data/eval/mobileposer_wphys/totalcapture'
     
-    data_path = os.path.join(data_dir, '4.pt')
+    data_path = os.path.join(data_dir, '30.pt')
     data = torch.load(data_path)
     
-    pose_t, pose_p, tran_t, tran_p, rheight_t, rheight_p = process_mobileposer_data(data, relative_height=True)
+    pose_t, pose_p, tran_t, tran_p = process_mobileposer_data(data)
     
-    visualize([pose_t, pose_p], rheight=[rheight_t, rheight_p])
+    visualize([pose_t, pose_p], [tran_t, tran_p])

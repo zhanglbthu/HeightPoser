@@ -5,6 +5,7 @@
     "version": "0.2.0",
     "configurations": [
 
+
         {
             "name": "evaluate dip",
             "type": "debugpy",
@@ -24,6 +25,16 @@
             "console": "integratedTerminal",
             // "args": ["--model", "data/checkpoints/mobileposer_finetuneddip/model_finetuned.pth",
             //          "--dataset", "dip"],
+            "justMyCode": false
+        },
+
+        {
+            "name": "floor",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "process.py",
+            "console": "integratedTerminal",
+            "args": ["--dataset", "floor"],
             "justMyCode": false
         }
     ]

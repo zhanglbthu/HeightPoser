@@ -18,6 +18,8 @@ from auxiliary import calibrate_q, quaternion_inverse
 from mobileposer.utils.model_utils import load_model
 from mobileposer.models import MobilePoserNet
 from mobileposer.data import PoseDataset
+from kalman import KalmanFilter
+import numpy as np
 import sys
 
 class IMUSet:
@@ -103,17 +105,32 @@ if __name__ == '__main__':
     os.makedirs(paths.live_record_dir, exist_ok=True)
     
     device = torch.device("cuda")
-    
-    clock = Clock()
-    
-    # set network
-    ckpt_path = "data/checkpoints/mobileposer_rheight_finetuneddip/model_finetuned.pth"
-    net = load_model(ckpt_path)
-    print('Model loaded.')
-
-    # region: set imu and calibration
     imu_set = IMUSet()
     sensor_set = WearableSensorSet()
+    clock = Clock()
+    
+    k = - 850
+    
+    # region: calculate sensors pressure bias
+    pressures = {"sensor0": [], "sensor1": []}
+    while True:
+        data = sensor_set.get()
+        if 0 in data.keys() and 1 in data.keys():
+            pressures["sensor0"].append(data[0].pressure)
+            pressures["sensor1"].append(data[1].pressure)
+            if len(pressures["sensor0"]) > 100:
+                p_bias = np.mean(pressures["sensor0"]) - np.mean(pressures["sensor1"])
+                print('p_bias:', p_bias)
+                break
+    # endregion
+    
+    # region: set network
+    ckpt_path = "data/checkpoints/mobileposer_finetuneddip/model_finetuned.pth"
+    net = load_model(ckpt_path)
+    print('Model loaded.')
+    # endregion
+
+    # region: align noitom and sensor imu data
     
     r"""calibration"""
     print('Rotate the sensor & imu together.')
@@ -136,17 +153,40 @@ if __name__ == '__main__':
         print('\tfinished\nqCI:', qCI, '\tqSO:', qSO)
         qIC_list.append(quaternion_inverse(qCI))
         qOS_list.append(quaternion_inverse(qSO))
+    # endregion
     
+    # region: align inertial and global coordinate & T-pose calibration
     RMI, RSB = tpose_calibration(n_calibration)
-    data = {'RMI': RMI, 'RSB': RSB, 'aM': [], 'RMB': []}
+    # endregion
+    
+    # region: calculate height bias
+    b_window = 100
+    bs = []
+    while True:
+        data = sensor_set.get()
+        if 0 in data.keys():
+            pressure = data[0].pressure
+            bs.append(k * pressure)
+            if len(bs) > b_window:
+                h_bias = - np.mean(bs)
+                print('h_bias:', h_bias)
+                break
+    # endregion
+    
+    # set kalman filter
+    kfs = [KalmanFilter(k, h_bias) for _ in range(n_calibration)]
     
     imu_set.clear()
-    # endregion
-
+    
     accs, oris = [], []
     poses, trans = [], []
+    data = {'RMI': RMI, 'RSB': RSB, 'aM': [], 'RMB': []}
     
     net.eval()
+    
+    from articulate.utils.pygame import StreamingDataViewer
+    sviewer = StreamingDataViewer(2, y_range=(-10, 10), window_length=500, names=['noitom', 'phone']); sviewer.connect()
+    
     with torch.no_grad(), MotionViewer(1, names=['Wearable Sensors']) as viewer:
         while True:
             clock.tick(60)
@@ -155,6 +195,8 @@ if __name__ == '__main__':
             tframe, RIS, aI = imu_set.get()
             
             sensor_data = sensor_set.get()
+            
+            heights = []
             
             for i in range(n_calibration):
                 qCO_sensor = torch.tensor(sensor_data[i].orientation).float()
@@ -172,14 +214,23 @@ if __name__ == '__main__':
                 RIS[index, :, :] = RIS_sensor[0, :, :]
 
                 aI[index, :] = aIS_sensor
+                
+                pressure = sensor_data[i].pressure
+                
+                if i == 1:
+                    pressure += p_bias
+                
+                z = np.array([[pressure]])
+                kfs[i].predict()
+                kfs[i].update(z)
+                h_filtered = kfs[i].get_height() * 0.01
+                heights.append(h_filtered)
             
             RMB = RMI.matmul(RIS).matmul(RSB) # [6, 3, 3]
             aM = aI.mm(RMI.t()) # [6, 3]
             
             oris.append(RMB)
             accs.append(aM)
-            
-            # pose, tran = net.forward_frame(aM.view(1, 6, 3), RMB.view(1, 6, 3, 3))
             
             # select combo
             combo = [0, 3, 4]
@@ -188,9 +239,16 @@ if __name__ == '__main__':
             RMB = RMB[combo]
             # endregion
             
+            # compute relative height
+            rheight = torch.tensor([heights[1] - heights[0]]).float()
+            print("heights: ", heights[0], end=' ')
+            
             input = torch.cat([aM.flatten(), RMB.flatten()], dim=0).to("cuda")  
             
             pose, _, tran, _ = net.forward_online(input)
+            
+            # edit translation z
+            tran[1] = heights[0]
             
             data['aM'].append(aM)
             data['RMB'].append(RMB)

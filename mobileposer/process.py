@@ -10,6 +10,10 @@ from mobileposer.articulate.model import ParametricModel
 from mobileposer.articulate import math
 from mobileposer.config import paths, datasets
 
+from pygame.time import Clock
+from articulate.utils.unity import MotionViewer
+
+import sys
 
 # specify target FPS
 TARGET_FPS = 30
@@ -19,6 +23,89 @@ vi_mask = torch.tensor([1961, 5424, 876, 4362, 411, 3021])
 ji_mask = torch.tensor([18, 19, 1, 2, 15, 0])
 body_model = ParametricModel(paths.smpl_file)
 
+class MotionViewerManager:
+    def __init__(self, sub_num, overlap=True, names=None):
+        self.viewer = MotionViewer(sub_num, overlap, names)
+        self.viewer.connect()
+        self.ground = None
+
+    def plot_ground(self, f_pos, ground):
+        grid_size = 10 
+        sample_range = 1.0
+        
+        # 中心点的 x, z 坐标
+        x_center = (f_pos[0][0] + f_pos[1][0]) / 2
+        z_center = (f_pos[0][2] + f_pos[1][2]) / 2
+        y = ground.item()  # y 坐标使用地面的值
+        
+        if self.ground is None:
+            self.ground = y
+        
+        # if abs(y - self.ground) > 1e-3:
+        #     self.ground = y
+        #     floor_color = [0, 255, 0]
+        # else:
+        #     floor_color = [255, 255, 255]
+
+        floor_color = [255, 255, 255]
+        
+        # 计算网格线的间距
+        step = 2 * sample_range / (grid_size - 1)  # 网格线间隔
+
+        # 绘制平行于 z 轴的网格线
+        for i in range(grid_size):
+            x = x_center - sample_range + i * step  # 当前网格线的 x 坐标
+            z_start = z_center - sample_range  # 网格线起点
+            z_end = z_center + sample_range  # 网格线终点
+            
+            # 绘制一条线
+            self.viewer.draw_line([x, y, z_start], [x, y, z_end], color=floor_color, render=False)
+
+        # 绘制平行于 x 轴的网格线
+        for i in range(grid_size):
+            z = z_center - sample_range + i * step  # 当前网格线的 z 坐标
+            x_start = x_center - sample_range  # 网格线起点
+            x_end = x_center + sample_range  # 网格线终点
+            
+            # 绘制一条线
+            self.viewer.draw_line([x_start, y, z], [x_end, y, z], color=floor_color, render=False)
+    
+    def plot_contact(self, f_pos, contact):
+        '''
+        fpos: [2, 3]
+        contact: [2]
+        '''
+        
+        for i in range(2):
+            if contact[i]:
+                color = [255, 0, 0]
+                self.viewer.draw_point(f_pos[i], color=color, render=False)
+    
+    def visualize(self, pose, tran=None, contact = None, f_pos=None, ground=None):
+        clock = Clock()
+        sub_num = len(pose)
+
+        for i in range(len(pose[0])):
+            clock.tick(30)
+            self.viewer.clear_line(render=False)
+            self.viewer.clear_point(render=False)
+
+            pose_list = [pose[sub][i] for sub in range(sub_num)]
+            tran_list = [tran[sub][i] for sub in range(sub_num)] if tran else [torch.zeros(3) for _ in range(sub_num)]
+
+            if ground is not None:
+                self.plot_ground(f_pos[i], ground[i])
+                
+            if contact is not None:
+                self.plot_contact(f_pos[i], contact[i])
+            
+            self.viewer.update_all(pose_list, tran_list, render=False)
+            self.viewer.render()
+
+    def close(self):
+        self.viewer.disconnect()
+
+view_manager = MotionViewerManager(1, overlap=True, names="gt")
 
 def _syn_acc(v, smooth_n=4):
     """Synthesize accelerations from vertex positions."""
@@ -31,6 +118,194 @@ def _syn_acc(v, smooth_n=4):
              for i in range(0, v.shape[0] - smooth_n * 2)])
     return acc
 
+def gen_amass_floor():
+    def _foot_ground_probs(joint):
+        """Compute foot-ground contact probabilities."""
+        dist_lfeet = torch.norm(joint[1:, 10] - joint[:-1, 10], dim=1)
+        dist_rfeet = torch.norm(joint[1:, 11] - joint[:-1, 11], dim=1)
+        lfoot_contact = (dist_lfeet < 0.008).int()
+        rfoot_contact = (dist_rfeet < 0.008).int()
+        lfoot_contact = torch.cat((torch.zeros(1, dtype=torch.int), lfoot_contact))
+        rfoot_contact = torch.cat((torch.zeros(1, dtype=torch.int), rfoot_contact))
+        return torch.stack((lfoot_contact, rfoot_contact), dim=1)
+
+    def _foot_min(joint):
+        lheel_y = joint[:, 7, 1]
+        rheel_y = joint[:, 8, 1]
+        
+        ltoe_y = joint[:, 10, 1]
+        rtoe_y = joint[:, 11, 1]
+        
+        # 取四个点的最小值 [N, 1]
+        points = torch.stack((lheel_y, rheel_y, ltoe_y, rtoe_y), dim=1)
+        min_y, _ = torch.min(points, dim=1, keepdim=True)   
+        assert min_y.shape == (joint.shape[0], 1)
+        return min_y
+    
+    def _foot_pos(joint):
+        # get foot position: [N, 2, 3]
+        
+        lfeet = joint[:, 10]
+        rfeet = joint[:, 11]
+        
+        return torch.stack((lfeet, rfeet), dim=1)
+    
+    def _foot_contact(fp_list):
+        """
+        判断 n 帧中是否连续有至少一只脚接触地面。
+        
+        参数:
+            fp_list (list of tuples): 包含 n 帧的接触概率，每一帧的格式为 (fp[0], fp[1])。
+                                    fp[0] 和 fp[1] 分别表示左右脚的接触概率或状态。
+        
+        返回:
+            bool: 如果 n 帧中至少有一只脚接触地面，则返回 True；否则返回 False。
+        """
+        for fp in fp_list:
+            if fp[0] or fp[1]:  # 判断当前帧是否有一只脚接触地面
+                continue
+            else:
+                # 只要有一帧没有脚接触地面，返回 False
+                return False
+        return True  # 所有帧都有至少一只脚接触地面
+    
+    # enable skipping processed files
+    try:
+        processed = [fpath.name for fpath in (paths.processed_datasets).iterdir()]
+    except FileNotFoundError:
+        processed = []
+
+    for ds_name in datasets.amass_datasets:
+
+        data_pose, data_trans, data_beta, length = [], [], [], []
+        npz_frames = []
+        print("\rReading", ds_name)
+        
+        for npz_fname in tqdm(sorted(glob.glob(os.path.join(paths.raw_amass, ds_name, "*/*_poses.npz")))):
+            
+            try: cdata = np.load(npz_fname)
+            except: continue
+
+            framerate = int(cdata['mocap_framerate'])
+            if framerate not in [120, 60, 59]:
+                continue
+
+            # enable downsampling
+            step = max(1, round(framerate / TARGET_FPS))
+
+            data_pose.extend(cdata['poses'][::step].astype(np.float32))
+            data_trans.extend(cdata['trans'][::step].astype(np.float32))
+            data_beta.append(cdata['betas'][:10])
+            length.append(cdata['poses'][::step].shape[0])
+            npz_frames.append(npz_fname)
+
+        if len(data_pose) == 0:
+            print(f"AMASS dataset, {ds_name} not supported")
+            continue
+
+        length = torch.tensor(length, dtype=torch.int)
+        shape = torch.tensor(np.asarray(data_beta, np.float32))
+        tran = torch.tensor(np.asarray(data_trans, np.float32))
+        pose = torch.tensor(np.asarray(data_pose, np.float32)).view(-1, 52, 3)
+
+        # include the left and right index fingers in the pose
+        pose[:, 23] = pose[:, 37]     # right hand 
+        pose = pose[:, :24].clone()   # only use body + right and left fingers
+
+        # align AMASS global frame with DIP
+        amass_rot = torch.tensor([[[1, 0, 0], [0, 0, 1], [0, -1, 0.]]])
+        tran = amass_rot.matmul(tran.unsqueeze(-1)).view_as(tran)
+        pose[:, 0] = math.rotation_matrix_to_axis_angle(
+            amass_rot.matmul(math.axis_angle_to_rotation_matrix(pose[:, 0])))
+        
+        print("Synthesizing IMU accelerations and orientations")
+        b = 0
+        
+        contact_num = 5
+        uneven_count = 0
+        total_count = len(length)
+        
+        out_pose, out_shape, out_tran, out_joint, out_vrot, out_vacc, out_contact = [], [], [], [], [], [], []
+        for i, l in tqdm(list(enumerate(length))):
+            if l <= 12: b += l; print("\tdiscard one sequence with length", l); continue
+            p = math.axis_angle_to_rotation_matrix(pose[b:b + l]).view(-1, 24, 3, 3)
+
+            _, joint = body_model.forward_kinematics(p, shape[i], tran[b:b + l], calc_mesh=False)
+            
+            fc_probs = _foot_ground_probs(joint).clone()
+            
+            cur_pose = p.clone()
+            cur_tran = tran[b:b + l].clone()
+            
+            f_min = _foot_min(joint)
+            cur_ground = f_min[0].item()
+            
+            # 初始化地面高度, shape和f_y一样, 值全部为cur_ground
+            ground = torch.full_like(f_min, cur_ground)
+            
+            f_pos = _foot_pos(joint)
+            
+            change = False
+            
+            for frame in range(l):
+                g = f_min[frame]
+                
+                fp = fc_probs[frame]
+                # fp_last = fc_probs[frame - 1] if frame > 0 else torch.ones_like(fp)
+                
+                if frame >= contact_num:
+                    fp_last_n = fc_probs[frame - contact_num: frame]
+                else:
+                    fp_last_n = fc_probs[:frame]
+                
+                ground[frame] = cur_ground
+                
+                # 如果当前帧至少有一个脚接触地面
+                contact = _foot_contact(fp_last_n)
+                if contact and abs(g - cur_ground) > 0.15:
+                    # print(f"Residual: {g - cur_ground}")
+                    residual = abs(g - cur_ground)
+                    ground[frame] = g
+                    cur_ground = g
+                    if abs(residual) > 0.15:
+                        change = True
+                    # print(f"Update ground height to {g} at frame {frame}")
+            
+            b += l
+            
+            if change:
+                uneven_count += 1
+                with open("uneven_ground.txt", "a") as f:
+                    f.write(f"{npz_frames[i]}\n")
+                # view_manager.visualize([cur_pose], [cur_tran], contact=fc_probs, f_pos=f_pos, ground=ground)
+                # break
+        print(f"Uneven ground count: {uneven_count}/{total_count}")
+            # grot, joint, vert = body_model.forward_kinematics(p, shape[i], tran[b:b + l], calc_mesh=True)
+
+            # out_pose.append(p.clone())  # N, 24, 3, 3
+            # out_tran.append(tran[b:b + l].clone())  # N, 3
+            # out_shape.append(shape[i].clone())  # 10
+            # out_joint.append(joint[:, :24].contiguous().clone())  # N, 24, 3
+            # out_vacc.append(_syn_acc(vert[:, vi_mask]))  # N, 6, 3
+            # out_contact.append(_foot_ground_probs(joint).clone()) # N, 2
+
+            # out_vrot.append(grot[:, ji_mask])  # N, 6, 3, 3
+            # b += l
+
+        # print("Saving...")
+        # # print(out_vacc.shape, out_pose.shape)
+        # data = {
+        #     'joint': out_joint,
+        #     'pose': out_pose,
+        #     'shape': out_shape,
+        #     'tran': out_tran,
+        #     'acc': out_vacc,
+        #     'ori': out_vrot,
+        #     'contact': out_contact
+        # }
+        # data_path = paths.processed_datasets / "predict" / f"{ds_name}.pt"
+        # torch.save(data, data_path)
+        # print(f"Synthetic AMASS dataset is saved at: {data_path}")
 
 def process_amass():
     def _foot_ground_probs(joint):
@@ -50,17 +325,12 @@ def process_amass():
         processed = []
 
     for ds_name in datasets.amass_datasets:
-        # # skip processed 
-        # if f"{ds_name}.pt" in processed:
-        #     continue
 
         data_pose, data_trans, data_beta, length = [], [], [], []
+        npz_fnames = []
         print("\rReading", ds_name)
 
         for npz_fname in tqdm(sorted(glob.glob(os.path.join(paths.raw_amass, ds_name, "*/*_poses.npz")))):
-            # if npz_fname is not start with "036"
-            if not npz_fname.split("/")[-1].startswith("36"):
-                continue    
             
             try: cdata = np.load(npz_fname)
             except: continue
@@ -76,6 +346,7 @@ def process_amass():
             data_trans.extend(cdata['trans'][::step].astype(np.float32))
             data_beta.append(cdata['betas'][:10])
             length.append(cdata['poses'][::step].shape[0])
+            npz_fnames.append(npz_fname)
 
         if len(data_pose) == 0:
             print(f"AMASS dataset, {ds_name} not supported")
@@ -102,17 +373,24 @@ def process_amass():
         for i, l in tqdm(list(enumerate(length))):
             if l <= 12: b += l; print("\tdiscard one sequence with length", l); continue
             p = math.axis_angle_to_rotation_matrix(pose[b:b + l]).view(-1, 24, 3, 3)
-            grot, joint, vert = body_model.forward_kinematics(p, shape[i], tran[b:b + l], calc_mesh=True)
-
-            out_pose.append(p.clone())  # N, 24, 3, 3
-            out_tran.append(tran[b:b + l].clone())  # N, 3
-            out_shape.append(shape[i].clone())  # 10
-            out_joint.append(joint[:, :24].contiguous().clone())  # N, 24, 3
-            out_vacc.append(_syn_acc(vert[:, vi_mask]))  # N, 6, 3
-            out_contact.append(_foot_ground_probs(joint).clone()) # N, 2
-
-            out_vrot.append(grot[:, ji_mask])  # N, 6, 3, 3
+            
+            # print("npz file with l:", npz_fnames[i], l)
+            
+            # view_manager.visualize([p], [tran[b:b + l]])
+            
             b += l
+            
+            # grot, joint, vert = body_model.forward_kinematics(p, shape[i], tran[b:b + l], calc_mesh=True)
+
+            # out_pose.append(p.clone())  # N, 24, 3, 3
+            # out_tran.append(tran[b:b + l].clone())  # N, 3
+            # out_shape.append(shape[i].clone())  # 10
+            # out_joint.append(joint[:, :24].contiguous().clone())  # N, 24, 3
+            # out_vacc.append(_syn_acc(vert[:, vi_mask]))  # N, 6, 3
+            # out_contact.append(_foot_ground_probs(joint).clone()) # N, 2
+
+            # out_vrot.append(grot[:, ji_mask])  # N, 6, 3, 3
+            # b += l
 
         print("Saving...")
         # print(out_vacc.shape, out_pose.shape)
@@ -225,7 +503,6 @@ def process_totalcapture():
     torch.save(data, data_path)
     print("Preprocessed TotalCapture dataset is saved at:", paths.processed_totalcapture)
 
-
 def process_dipimu(split="test"):
     """Preprocess DIP for finetuning and evaluation."""
     imu_mask = [7, 8, 9, 10, 0, 2]
@@ -296,7 +573,6 @@ def process_dipimu(split="test"):
     torch.save(data, data_path)
     print(f"Preprocessed DIP-IMU dataset is saved at: {data_path}")
 
-
 def process_imuposer(split: str="train"):
     """Preprocess the IMUPoser dataset"""
 
@@ -342,7 +618,6 @@ def process_imuposer(split: str="train"):
     data_path = paths.eval_dir / f"imuposer_{split}.pt"
     torch.save(data, data_path)
 
-
 def create_directories():
     paths.processed_datasets.mkdir(exist_ok=True, parents=True)
     paths.eval_dir.mkdir(exist_ok=True, parents=True)
@@ -357,7 +632,9 @@ if __name__ == "__main__":
     create_directories()
 
     # process datasets
-    if args.dataset == "amass":
+    if args.dataset == "floor":
+        gen_amass_floor()
+    elif args.dataset == "amass":
         process_amass()
     elif args.dataset == "totalcapture":
         process_totalcapture()

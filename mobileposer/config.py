@@ -29,7 +29,8 @@ class paths:
     checkpoint = root_dir / "data" / "checkpoints"
     smpl_file = root_dir / "smpl/basicmodel_m.pkl"
     weights_file = root_dir / "data" / "checkpoints/official/weights.pth"
-    raw_amass = Path("/root/autodl-tmp/mobileposer/dataset_raw/AMASS")           # TODO: replace with your path
+    # raw_amass = Path("/root/autodl-tmp/mobileposer/dataset_raw/AMASS")           # TODO: replace with your path
+    raw_amass = Path("data/dataset_raw/AMASS")           # TODO: replace with your path
     raw_dip = Path("/root/autodl-tmp/mobileposer/dataset_raw/DIP_IMU")           # TODO: replace with your path
     raw_imuposer = Path("/root/autodl-tmp/mobileposer/dataset_raw/imuposer_dataset")     # TODO: replace with your path
     # eval_dir = root_dir / "data/processed_datasets/eval"
@@ -132,12 +133,12 @@ class datasets:
     }
 
     # AMASS datasets (add more as they become available in AMASS!)
-    # amass_datasets = ['ACCAD', 'BioMotionLab_NTroje', 'BMLhandball', 'BMLmovi', 'CMU', 
-    #                   'DanceDB', 'DFaust_67', 'EKUT', 'Eyes_Japan_Dataset', 'HUMAN4D',
-    #                   'HumanEva', 'KIT', 'MPI_HDM05', 'MPI_Limits', 'MPI_mosh', 'SFU',
-    #                   'SSM_synced', 'TCD_handMocap', 'TotalCapture', 'Transitions_mocap']
+    amass_datasets = ['ACCAD', 'BioMotionLab_NTroje', 'BMLhandball', 'BMLmovi', 'CMU', 
+                      'DanceDB', 'DFaust_67', 'EKUT', 'Eyes_Japan_Dataset', 'HUMAN4D',
+                      'HumanEva', 'KIT', 'MPI_HDM05', 'MPI_Limits', 'MPI_mosh', 'SFU',
+                      'SSM_synced', 'TCD_handMocap', 'TotalCapture', 'Transitions_mocap']
     
-    amass_datasets = ['CMU']
+    # amass_datasets = ['CMU']
 
     # Root-relative joint positions
     root_relative = False
