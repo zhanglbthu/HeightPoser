@@ -105,7 +105,7 @@ class MotionViewerManager:
     def close(self):
         self.viewer.disconnect()
 
-view_manager = MotionViewerManager(1, overlap=True, names="gt")
+# view_manager = MotionViewerManager(1, overlap=True, names="gt")
 
 def _syn_acc(v, smooth_n=4):
     """Synthesize accelerations from vertex positions."""
@@ -169,6 +169,13 @@ def gen_amass_floor():
                 return False
         return True  # 所有帧都有至少一只脚接触地面
     
+    def _get_heights(vert, ground):
+        pocket_height = vert[:, vi_mask[3], 1] - ground
+        wrist_height = vert[:, vi_mask[0], 1] - ground
+        
+        # return [N, 2]
+        return torch.stack((pocket_height, wrist_height), dim=1)
+    
     # enable skipping processed files
     try:
         processed = [fpath.name for fpath in (paths.processed_datasets).iterdir()]
@@ -222,10 +229,10 @@ def gen_amass_floor():
         b = 0
         
         contact_num = 5
-        uneven_count = 0
-        total_count = len(length)
         
         out_pose, out_shape, out_tran, out_joint, out_vrot, out_vacc, out_contact = [], [], [], [], [], [], []
+        out_ground, out_heights = [], []
+        uneven=False
         for i, l in tqdm(list(enumerate(length))):
             if l <= 12: b += l; print("\tdiscard one sequence with length", l); continue
             p = math.axis_angle_to_rotation_matrix(pose[b:b + l]).view(-1, 24, 3, 3)
@@ -234,24 +241,14 @@ def gen_amass_floor():
             
             fc_probs = _foot_ground_probs(joint).clone()
             
-            cur_pose = p.clone()
-            cur_tran = tran[b:b + l].clone()
-            
             f_min = _foot_min(joint)
             cur_ground = f_min[0].item()
             
             # 初始化地面高度, shape和f_y一样, 值全部为cur_ground
             ground = torch.full_like(f_min, cur_ground)
             
-            f_pos = _foot_pos(joint)
-            
-            change = False
-            
             for frame in range(l):
                 g = f_min[frame]
-                
-                fp = fc_probs[frame]
-                # fp_last = fc_probs[frame - 1] if frame > 0 else torch.ones_like(fp)
                 
                 if frame >= contact_num:
                     fp_last_n = fc_probs[frame - contact_num: frame]
@@ -262,50 +259,48 @@ def gen_amass_floor():
                 
                 # 如果当前帧至少有一个脚接触地面
                 contact = _foot_contact(fp_last_n)
-                if contact and abs(g - cur_ground) > 0.15:
-                    # print(f"Residual: {g - cur_ground}")
-                    residual = abs(g - cur_ground)
+                if contact and abs(g - cur_ground) > 0.4:
+                    uneven = True
+                    break
                     ground[frame] = g
                     cur_ground = g
-                    if abs(residual) > 0.15:
-                        change = True
-                    # print(f"Update ground height to {g} at frame {frame}")
+            
+            if uneven:
+                b += l
+                uneven = False
+                print("fname:", npz_frames[i], "discard one sequence with uneven ground")
+                continue
+            
+            grot, joint, vert = body_model.forward_kinematics(p, shape[i], tran[b:b + l], calc_mesh=True)
+
+            out_pose.append(p.clone())  # N, 24, 3, 3
+            out_tran.append(tran[b:b + l].clone())  # N, 3
+            out_shape.append(shape[i].clone())  # 10
+            out_joint.append(joint[:, :24].contiguous().clone())  # N, 24, 3
+            out_vacc.append(_syn_acc(vert[:, vi_mask]))  # N, 6, 3
+            out_contact.append(_foot_ground_probs(joint).clone()) # N, 2
+            out_vrot.append(grot[:, ji_mask])  # N, 6, 3, 3
+            # out_ground.append(ground)
+            out_heights.append(_get_heights(vert, ground))
             
             b += l
-            
-            if change:
-                uneven_count += 1
-                with open("uneven_ground.txt", "a") as f:
-                    f.write(f"{npz_frames[i]}\n")
-                # view_manager.visualize([cur_pose], [cur_tran], contact=fc_probs, f_pos=f_pos, ground=ground)
-                # break
-        print(f"Uneven ground count: {uneven_count}/{total_count}")
-            # grot, joint, vert = body_model.forward_kinematics(p, shape[i], tran[b:b + l], calc_mesh=True)
 
-            # out_pose.append(p.clone())  # N, 24, 3, 3
-            # out_tran.append(tran[b:b + l].clone())  # N, 3
-            # out_shape.append(shape[i].clone())  # 10
-            # out_joint.append(joint[:, :24].contiguous().clone())  # N, 24, 3
-            # out_vacc.append(_syn_acc(vert[:, vi_mask]))  # N, 6, 3
-            # out_contact.append(_foot_ground_probs(joint).clone()) # N, 2
-
-            # out_vrot.append(grot[:, ji_mask])  # N, 6, 3, 3
-            # b += l
-
-        # print("Saving...")
-        # # print(out_vacc.shape, out_pose.shape)
-        # data = {
-        #     'joint': out_joint,
-        #     'pose': out_pose,
-        #     'shape': out_shape,
-        #     'tran': out_tran,
-        #     'acc': out_vacc,
-        #     'ori': out_vrot,
-        #     'contact': out_contact
-        # }
-        # data_path = paths.processed_datasets / "predict" / f"{ds_name}.pt"
-        # torch.save(data, data_path)
-        # print(f"Synthetic AMASS dataset is saved at: {data_path}")
+        print("Saving...")
+        # print(out_vacc.shape, out_pose.shape)
+        data = {
+            'joint': out_joint,
+            'pose': out_pose,
+            'shape': out_shape,
+            'tran': out_tran,
+            'acc': out_vacc,
+            'ori': out_vrot,
+            'contact': out_contact,
+            # 'ground': out_ground,
+            'heights': out_heights
+        }
+        data_path = paths.processed_datasets / f"{ds_name}.pt"
+        torch.save(data, data_path)
+        print(f"Synthetic AMASS dataset is saved at: {data_path}")
 
 def process_amass():
     def _foot_ground_probs(joint):
