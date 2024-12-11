@@ -25,10 +25,10 @@ class FootContact(L.LightningModule):
 
         # model definitions
         self.bodymodel = art.model.ParametricModel(paths.smpl_file, device=self.C.device)
-        self.footcontact = RNN(self.C.n_output_joints * 3 + self.C.n_imu + 1, 2, 64)  # foot-ground probability model
+        self.footcontact = RNN(self.C.n_output_joints * 3 + self.C.n_imu + 2, 2, 64)  # foot-ground probability model
 
         # log input and output dimensions
-        print(f"Input dimensions: {self.C.n_output_joints*3 + self.C.n_imu + 1}")
+        print(f"Input dimensions: {self.C.n_output_joints*3 + self.C.n_imu + 2}")
         print(f"Output dimensions: 2")
         
         # loss function (binary cross-entropy)

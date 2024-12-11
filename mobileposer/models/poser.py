@@ -29,10 +29,10 @@ class Poser(L.LightningModule):
         self.global_to_local_pose = self.bodymodel.inverse_kinematics_R
 
         # model definitions
-        self.pose = RNN(self.C.n_output_joints*3 + self.C.n_imu + 1, joint_set.n_reduced*6, 256) # pose estimation model
+        self.pose = RNN(self.C.n_output_joints*3 + self.C.n_imu + 2, joint_set.n_reduced*6, 256) # pose estimation model
 
         # log input and output dimensions
-        print(f"Input dimensions: {self.C.n_output_joints*3 + self.C.n_imu + 1}")
+        print(f"Input dimensions: {self.C.n_output_joints*3 + self.C.n_imu + 2}")
         print(f"Output dimensions: {joint_set.n_reduced*6}")
         
         # loss function

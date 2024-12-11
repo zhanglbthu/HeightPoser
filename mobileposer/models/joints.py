@@ -24,8 +24,8 @@ class Joints(L.LightningModule):
         self.finetune = finetune
         self.hypers = finetune_hypers if finetune else train_hypers
         
-        # relative height
-        self.input_dim = self.C.n_imu + 1 if height else self.C.n_imu
+        # height
+        self.input_dim = self.C.n_imu + 2 if height else self.C.n_imu
 
         # model definitions
         self.bodymodel = art.model.ParametricModel(paths.smpl_file, device=self.C.device)

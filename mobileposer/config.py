@@ -35,8 +35,8 @@ class paths:
     # eval_dir = root_dir / "data/processed_datasets/eval"
     # processed_datasets = root_dir / "data/processed_datasets"
     eval_dir = Path("/root/autodl-tmp/mobileposer/eval")
-    # processed_datasets = Path("/root/autodl-tmp/mobileposer/dataset_work")
-    processed_datasets = Path("data/dataset_work")
+    processed_datasets = Path("/root/autodl-tmp/mobileposer/dataset_work")
+    # processed_datasets = Path("data/dataset_work")
 
     # livedemo record directory
     temp_dir = Path("data/livedemo/temp")

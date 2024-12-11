@@ -26,11 +26,11 @@ class Velocity(L.LightningModule):
         self.bodymodel = ParametricModel(paths.smpl_file, device=self.C.device)
 
         # model definitions
-        self.vel = RNN(self.C.n_output_joints * 3 + self.C.n_imu + 1, 24 * 3, 256, bidirectional=False)  # per-frame velocity of the root joint. 
+        self.vel = RNN(self.C.n_output_joints * 3 + self.C.n_imu + 2, 24 * 3, 256, bidirectional=False)  # per-frame velocity of the root joint. 
         self.rnn_state = None
 
         # log input and output dimensions
-        print(f"Input dimensions: {self.C.n_output_joints*3 + self.C.n_imu + 1}")
+        print(f"Input dimensions: {self.C.n_output_joints*3 + self.C.n_imu + 2}")
         print(f"Output dimensions: {24*3}")
         
         # loss function 
