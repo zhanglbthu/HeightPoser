@@ -118,6 +118,27 @@ def _syn_acc(v, smooth_n=4):
              for i in range(0, v.shape[0] - smooth_n * 2)])
     return acc
 
+def _foot_min(joint):
+    lheel_y = joint[:, 7, 1]
+    rheel_y = joint[:, 8, 1]
+    
+    ltoe_y = joint[:, 10, 1]
+    rtoe_y = joint[:, 11, 1]
+    
+    # 取四个点的最小值 [N, 1]
+    points = torch.stack((lheel_y, rheel_y, ltoe_y, rtoe_y), dim=1)
+    min_y, _ = torch.min(points, dim=1, keepdim=True)   
+    assert min_y.shape == (joint.shape[0], 1)
+    return min_y
+
+def _get_heights(vert, ground):
+    pocket = vert[:, vi_mask[3], 1].unsqueeze(1)
+    pocket_height = vert[:, vi_mask[3], 1].unsqueeze(1) - ground
+    wrist_height = vert[:, vi_mask[0], 1].unsqueeze(1) - ground
+    
+    # return [N, 2]
+    return torch.stack((pocket_height, wrist_height), dim=1)
+
 def gen_amass_floor():
     def _foot_ground_probs(joint):
         """Compute foot-ground contact probabilities."""
@@ -128,19 +149,6 @@ def gen_amass_floor():
         lfoot_contact = torch.cat((torch.zeros(1, dtype=torch.int), lfoot_contact))
         rfoot_contact = torch.cat((torch.zeros(1, dtype=torch.int), rfoot_contact))
         return torch.stack((lfoot_contact, rfoot_contact), dim=1)
-
-    def _foot_min(joint):
-        lheel_y = joint[:, 7, 1]
-        rheel_y = joint[:, 8, 1]
-        
-        ltoe_y = joint[:, 10, 1]
-        rtoe_y = joint[:, 11, 1]
-        
-        # 取四个点的最小值 [N, 1]
-        points = torch.stack((lheel_y, rheel_y, ltoe_y, rtoe_y), dim=1)
-        min_y, _ = torch.min(points, dim=1, keepdim=True)   
-        assert min_y.shape == (joint.shape[0], 1)
-        return min_y
     
     def _foot_pos(joint):
         # get foot position: [N, 2, 3]
@@ -168,14 +176,6 @@ def gen_amass_floor():
                 # 只要有一帧没有脚接触地面，返回 False
                 return False
         return True  # 所有帧都有至少一只脚接触地面
-    
-    def _get_heights(vert, ground):
-        pocket = vert[:, vi_mask[3], 1].unsqueeze(1)
-        pocket_height = vert[:, vi_mask[3], 1].unsqueeze(1) - ground
-        wrist_height = vert[:, vi_mask[0], 1].unsqueeze(1) - ground
-        
-        # return [N, 2]
-        return torch.stack((pocket_height, wrist_height), dim=1)
     
     # enable skipping processed files
     try:
@@ -418,6 +418,7 @@ def process_totalcapture():
 
     processed, failed_to_process = [], []
     accs, oris, poses, trans = [], [], [], []
+    heights = []
     for file in sorted(os.listdir(paths.calibrated_totalcapture)):
         if not file.endswith(".pkl") or ('s5' in file and 'acting3' in file) or not any(file.startswith(s.lower()) for s in subjects):
             continue
@@ -482,7 +483,12 @@ def process_totalcapture():
     # remove acceleration bias
     for iacc, pose, tran in zip(accs, poses, trans):
         pose = pose.view(-1, 24, 3, 3)
-        _, _, vert = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
+        _, joint, vert = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
+        
+        ground = _foot_min(joint)
+        
+        heights.append(_get_heights(vert, ground).squeeze())
+        
         vacc = _syn_acc(vert[:, vi_mask])
         for imu_id in range(6):
             for i in range(3):
@@ -493,7 +499,8 @@ def process_totalcapture():
         'acc': accs,
         'ori': oris,
         'pose': poses,
-        'tran': trans
+        'tran': trans,
+        'heights': heights
     }
     data_path = paths.eval_dir / "totalcapture.pt"
     torch.save(data, data_path)
