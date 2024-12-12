@@ -42,6 +42,10 @@ class paths:
     temp_dir = Path("data/livedemo/temp")
     live_record_dir = Path("data/livedemo/record")
     
+    calibrated_totalcapture = Path("/root/autodl-tmp/mobileposer/dataset_raw/TotalCapture/calibrated")
+    raw_totalcapture_official = Path("/root/autodl-tmp/mobileposer/dataset_raw/TotalCapture/official")
+    processed_totalcapture = Path("/root/autodl-tmp/mobileposer/dataset_work/TotalCapture")
+    
 class model_config:
     """MobilePoser Model configurations."""
     # device

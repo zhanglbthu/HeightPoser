@@ -38,6 +38,32 @@ def _relative_height(vert):
     relative_height = vert[:, vi_mask[0], 1] - vert[:, vi_mask[3], 1] # left wrist - right thigh
     return relative_height
 
+def _foot_min(joint, fix=False):
+    lheel_y = joint[:, 7, 1]
+    rheel_y = joint[:, 8, 1]
+    
+    ltoe_y = joint[:, 10, 1]
+    rtoe_y = joint[:, 11, 1]
+    
+    # 取四个点的最小值 [N, 1]
+    points = torch.stack((lheel_y, rheel_y, ltoe_y, rtoe_y), dim=1)
+    min_y, _ = torch.min(points, dim=1, keepdim=True)   
+    assert min_y.shape == (joint.shape[0], 1)
+    
+    if fix:
+        # min_y所有值都取第一帧
+        min_y[:] = min_y[0]
+    
+    return min_y
+
+def _get_heights(vert, ground):
+    pocket = vert[:, vi_mask[3], 1].unsqueeze(1)
+    pocket_height = vert[:, vi_mask[3], 1].unsqueeze(1) - ground
+    wrist_height = vert[:, vi_mask[0], 1].unsqueeze(1) - ground
+    
+    # return [N, 2]
+    return torch.stack((pocket_height, wrist_height), dim=1)
+
 def process_amass():
     def _foot_ground_probs(joint):
         """Compute foot-ground contact probabilities."""
@@ -152,6 +178,7 @@ def process_totalcapture():
 
     processed, failed_to_process = [], []
     accs, oris, poses, trans = [], [], [], []
+    heights = []
     rheights = []
     for file in sorted(os.listdir(paths.calibrated_totalcapture)):
         if not file.endswith(".pkl") or ('s5' in file and 'acting3' in file) or not any(file.startswith(s.lower()) for s in subjects):
@@ -227,9 +254,14 @@ def process_totalcapture():
     # remove acceleration bias and add relative height
     for iacc, pose, tran in zip(accs, poses, trans):
         pose = pose.view(-1, 24, 3, 3)
-        _, _, vert = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
+        _, joint, vert = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
         vacc = _syn_acc(vert[:, vi_mask])
         rheights.append(_relative_height(vert))
+        
+        ground = _foot_min(joint, fix=True)
+        
+        heights.append(_get_heights(vert, ground).squeeze())
+        
         for imu_id in range(6):
             for i in range(3):
                 d = -iacc[:, imu_id, i].mean() + vacc[:, imu_id, i].mean()
@@ -240,7 +272,8 @@ def process_totalcapture():
         'ori': oris,
         'pose': poses,
         'tran': trans,
-        'rheight': rheights
+        'rheight': rheights,
+        'heights': heights
     }
     data_path = paths.eval_dir / "totalcapture.pt"
     torch.save(data, data_path)
@@ -263,6 +296,7 @@ def process_dipimu(split="test"):
 
     accs, oris, poses, trans, shapes, joints = [], [], [], [], [], []
     rheights = []
+    heights = []
     for subject_name in subjects:
         for motion_name in os.listdir(os.path.join(paths.raw_dip, subject_name)):
             try:
@@ -299,6 +333,10 @@ def process_dipimu(split="test"):
                     poses.append(p.clone())
                     joints.append(joint)
                     rheights.append(_relative_height(vert))
+                    
+                    ground = _foot_min(joint, fix=True)
+                    heights.append(_get_heights(vert, ground))
+                    
                 else:
                     print(f"DIP-IMU: {subject_name}/{motion_name} has too much nan! Discard!")
             except Exception as e:
@@ -313,7 +351,8 @@ def process_dipimu(split="test"):
         'tran': trans,
         'acc': accs,
         'ori': oris,
-        'rheight': rheights
+        'rheight': rheights,
+        'heights': heights
     }
     data_path = paths.eval_dir / f"dip_{split}.pt"
     torch.save(data, data_path)
@@ -328,6 +367,7 @@ def process_imuposer(split: str="train"):
 
     accs, oris, poses, trans = [], [], [], []
     rheights = []
+    heights = []
     for pid_path in sorted(paths.raw_imuposer.iterdir()):
         if pid_path.name not in subjects:
             continue
@@ -357,6 +397,9 @@ def process_imuposer(split: str="train"):
                 poses.append(pose)  # N, 24, 3, 3
                 trans.append(tran)  # N, 3
                 rheights.append(_relative_height(vert))  # N
+                
+                ground = _foot_min(joint, fix=True)
+                heights.append(_get_heights(vert, ground))
 
     print(f"# Data Processed: {len(accs)}")
     data = {
@@ -364,7 +407,8 @@ def process_imuposer(split: str="train"):
         'ori': oris,
         'pose': poses,
         'tran': trans,
-        'rheight': rheights
+        'rheight': rheights,
+        'heights': heights
     }
     data_path = paths.eval_dir / f"imuposer_{split}.pt"
     torch.save(data, data_path)
