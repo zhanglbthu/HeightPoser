@@ -132,12 +132,17 @@ def _foot_min(joint):
     return min_y
 
 def _get_heights(vert, ground):
-    pocket = vert[:, vi_mask[3], 1].unsqueeze(1)
-    pocket_height = vert[:, vi_mask[3], 1].unsqueeze(1) - ground
+    # pocket = vert[:, vi_mask[3], 1].unsqueeze(1)
+    # pocket_height = vert[:, vi_mask[3], 1].unsqueeze(1) - ground
+    # wrist_height = vert[:, vi_mask[0], 1].unsqueeze(1) - ground
+    
+    # # return [N, 2]
+    # return torch.stack((pocket_height, wrist_height), dim=1)
+    
+    root_height = vert[:, vi_mask[5], 1].unsqueeze(1) - ground
     wrist_height = vert[:, vi_mask[0], 1].unsqueeze(1) - ground
     
-    # return [N, 2]
-    return torch.stack((pocket_height, wrist_height), dim=1)
+    return torch.stack((root_height, wrist_height), dim=1)
 
 def gen_amass_floor():
     def _foot_ground_probs(joint):
@@ -265,6 +270,9 @@ def gen_amass_floor():
                     break
                     ground[frame] = g
                     cur_ground = g
+            
+            # assert ground值都是一样的
+            assert torch.all(ground == ground[0]), f"Inconsistent ground values: {ground}"
             
             if uneven:
                 b += l
