@@ -38,7 +38,7 @@ class MobilePoserNet(L.LightningModule):
         self.global_to_local_pose = self.bodymodel.inverse_kinematics_R
 
         # model definitions
-        self.pose = poser if poser else Poser()                                # pose estimation model
+        self.pose = poser if poser else Poser()                                 # pose estimation model
         self.joints = joints if joints else Joints()                            # joint estimation model
         self.foot_contact = foot_contact if foot_contact else FootContact()     # foot-ground probability model
         self.velocity = velocity if velocity else Velocity()                    # joint velocity model
