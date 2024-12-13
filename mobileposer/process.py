@@ -105,7 +105,7 @@ class MotionViewerManager:
     def close(self):
         self.viewer.disconnect()
 
-# view_manager = MotionViewerManager(1, overlap=True, names="gt")
+# view_manager = MotionViewerManager(1, overlap=True, names=["gt"])
 
 def _syn_acc(v, smooth_n=4):
     """Synthesize accelerations from vertex positions."""
@@ -132,17 +132,13 @@ def _foot_min(joint):
     return min_y
 
 def _get_heights(vert, ground):
-    # pocket = vert[:, vi_mask[3], 1].unsqueeze(1)
-    # pocket_height = vert[:, vi_mask[3], 1].unsqueeze(1) - ground
-    # wrist_height = vert[:, vi_mask[0], 1].unsqueeze(1) - ground
     
-    # # return [N, 2]
-    # return torch.stack((pocket_height, wrist_height), dim=1)
-    
-    root_height = vert[:, vi_mask[5], 1].unsqueeze(1) - ground
+    pocket = vert[:, vi_mask[3], 1].unsqueeze(1)
+    pocket_height = vert[:, vi_mask[3], 1].unsqueeze(1) - ground
     wrist_height = vert[:, vi_mask[0], 1].unsqueeze(1) - ground
     
-    return torch.stack((root_height, wrist_height), dim=1)
+    # return [N, 2]
+    return torch.stack((pocket_height, wrist_height), dim=1)
 
 def gen_amass_floor():
     def _foot_ground_probs(joint):
@@ -265,20 +261,12 @@ def gen_amass_floor():
                 
                 # 如果当前帧至少有一个脚接触地面
                 contact = _foot_contact(fp_last_n)
-                if contact and abs(g - cur_ground) > 0.4:
-                    uneven = True
-                    break
+                residual = abs(g - cur_ground)
+                if contact and residual > 1e-3:
                     ground[frame] = g
                     cur_ground = g
-            
-            # assert ground值都是一样的
-            assert torch.all(ground == ground[0]), f"Inconsistent ground values: {ground}"
-            
-            if uneven:
-                b += l
-                uneven = False
-                print("fname:", npz_frames[i], "discard one sequence with uneven ground")
-                continue
+                    if residual > 0.3:
+                        print("fname:", npz_frames[i], "residual:", residual)
             
             grot, joint, vert = body_model.forward_kinematics(p, shape[i], tran[b:b + l], calc_mesh=True)
 

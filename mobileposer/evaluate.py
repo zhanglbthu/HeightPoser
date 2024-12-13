@@ -67,8 +67,6 @@ class PoseEvaluator:
         print(" | ".join(output_parts), file=file)
         # 如果需要在末尾换行，print 本身就会换行，无需额外操作
 
-
-
 @torch.no_grad()
 def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluate_tran=False,
                   save_dir=None):
@@ -154,8 +152,12 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
         print('============== online ================')
         evaluator.print(torch.stack(online_errs).mean(dim=0))
     
+    log_path = save_dir / 'log.txt'
+    
     for online_err in online_errs:
-        with open('data/eval/quantitative/mobileposer_wphys/imuposer.txt', 'a', encoding='utf-8') as f:
+        # with open('data/eval/quantitative/mobileposer_wphys/imuposer.txt', 'a', encoding='utf-8') as f:
+        #     evaluator.print_single(online_err, file=f)
+        with open(log_path, 'a', encoding='utf-8') as f:
             evaluator.print_single(online_err, file=f)
     
     # print translation errors
@@ -167,6 +169,7 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--model', type=str, required=True)
     parser.add_argument('--dataset', type=str, default='dip')
+    parser.add_argument('--name', type=str, default='default')
     args = parser.parse_args()
 
     # record combo
@@ -179,13 +182,10 @@ if __name__ == '__main__':
     
     fold = 'test'
     
-    # if args.dataset not in datasets.test_datasets:
-    #     fold = 'predict'
-    #     # raise ValueError(f"Test dataset: {args.dataset} not found.")
     dataset = PoseDataset(fold=fold, evaluate=args.dataset)
     
-    save_dir = Path('data') / 'eval' / args.dataset
-    os.makedirs(save_dir, exist_ok=True)
+    save_dir = Path('data') / 'eval' / args.name / args.dataset
+    save_dir.mkdir(parents=True, exist_ok=True)
     
     # evaluate pose
     print(f"Starting evaluation: {args.dataset.capitalize()}")
