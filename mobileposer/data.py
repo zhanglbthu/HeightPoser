@@ -80,6 +80,9 @@ class PoseDataset(Dataset):
         foots = file_data.get('contact', [None] * len(poses))
 
         for acc, ori, pose, tran, joint, foot in zip(accs, oris, poses, trans, joints, foots):
+            '''
+            pose: local pose [N, 24, 3, 3]
+            '''
             # select only the first 5 IMUs (lw, rw, lh, rh, head)
             acc, ori = acc[:, :5]/amass.acc_scale, ori[:, :5]
             

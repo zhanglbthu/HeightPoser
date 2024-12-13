@@ -181,7 +181,7 @@ class MobilePoserNet(L.LightningModule):
         return pose, pred_joints, tran, contact
 
     @torch.no_grad()
-    def forward_online(self, data, input_lengths=None): # data shape: [60]
+    def forward_online(self, data, input_lengths=None, debug=False): # data shape: [60]
         # preprocess data to imu: [total_frames, 60]
         imu = data.repeat(self.num_total_frames, 1) if self.imu is None else torch.cat((self.imu[1:], data.view(1, -1)))
 
@@ -227,4 +227,7 @@ class MobilePoserNet(L.LightningModule):
             pose = pose.view(24, 3, 3)
             return pose, pred_joints.squeeze(0), self.last_root_pos.clone(), contact
 
+        if debug:
+            return pose, joints, self.last_root_pos.clone(), contact
+        
         return pose, pred_joints.squeeze(0), self.last_root_pos.clone(), contact

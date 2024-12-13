@@ -79,6 +79,7 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
     # xs: [contact_seq_num, N, 60], ys: ([contact_seq_num, N, 144], [contact_seq_num, N, 3])
     # xs, ys, zs = zip(*[(imu.to(device), (pose.to(device), tran), (velocity.to(device), contact.to(device))) for imu, pose, joint, tran, velocity, contact in dataset])
     xs, ys = zip(*[(imu.to(device), (pose.to(device), tran)) for imu, pose, joint, tran in dataset])
+    joints_t = [joint.to(device) for _, _, joint, _ in dataset]
 
     # setup Pose Evaluator
     evaluator = PoseEvaluator()
@@ -100,7 +101,7 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
             pose_t = art.math.r6d_to_rotation_matrix(pose_t)
 
             if getenv("ONLINE"):
-                online_results = [model.forward_online(f) for f in torch.cat((x, x[-1].repeat(num_future_frame, 1)))]
+                online_results = [model.forward_online(f, debug=True) for f in torch.cat((x, x[-1].repeat(num_future_frame, 1)))]
                 pose_p_online, joint_p_online, tran_p_online, contact_p_online = [torch.stack(_)[num_future_frame:] for _ in zip(*online_results)]
 
             if evaluate_tran:
@@ -136,13 +137,14 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
                 online_errs.append(evaluator.eval(pose_p_online, pose_t, tran_p=tran_p_online, tran_t=tran_t))
             
             # save pose_t, pose_p_online, tran_t, tran_p_online to one .pt file
+            joint_t = joints_t[idx]
             if save_dir:
                 torch.save({'pose_t': pose_t, 
-                            'pose_p_online': pose_p_online, 
+                            'pose_p': pose_p_online, 
                             'tran_t': tran_t, 
-                            'tran_p_online': tran_p_online},
-                            # 'contact_t': contact_t,
-                            # 'contact_p_online': contact_p_online},
+                            'tran_p': tran_p_online,
+                            'joint_t': joint_t,
+                            'joint_p': joint_p_online},
                            save_dir / f"{idx}.pt")
 
     # print joint errors

@@ -359,7 +359,7 @@ def process_amass():
         length = torch.tensor(length, dtype=torch.int)
         shape = torch.tensor(np.asarray(data_beta, np.float32))
         tran = torch.tensor(np.asarray(data_trans, np.float32))
-        pose = torch.tensor(np.asarray(data_pose, np.float32)).view(-1, 52, 3)
+        pose = torch.tensor(np.asarray(data_pose, np.float32)).view(-1, 52, 3) # * local
 
         # include the left and right index fingers in the pose
         pose[:, 23] = pose[:, 37]     # right hand 
@@ -376,25 +376,19 @@ def process_amass():
         out_pose, out_shape, out_tran, out_joint, out_vrot, out_vacc, out_contact = [], [], [], [], [], [], []
         for i, l in tqdm(list(enumerate(length))):
             if l <= 12: b += l; print("\tdiscard one sequence with length", l); continue
-            p = math.axis_angle_to_rotation_matrix(pose[b:b + l]).view(-1, 24, 3, 3)
+            p = math.axis_angle_to_rotation_matrix(pose[b:b + l]).view(-1, 24, 3, 3) # * local pose [N, 24, 3, 3]
             
-            # print("npz file with l:", npz_fnames[i], l)
-            
-            # view_manager.visualize([p], [tran[b:b + l]])
-            
+            grot, joint, vert = body_model.forward_kinematics(p, shape[i], tran[b:b + l], calc_mesh=True)
+
+            out_pose.append(p.clone())  # N, 24, 3, 3
+            out_tran.append(tran[b:b + l].clone())  # N, 3
+            out_shape.append(shape[i].clone())  # 10
+            out_joint.append(joint[:, :24].contiguous().clone())  # * global joint_position [N, 24, 3]
+            out_vacc.append(_syn_acc(vert[:, vi_mask]))  # N, 6, 3
+            out_contact.append(_foot_ground_probs(joint).clone()) # N, 2
+
+            out_vrot.append(grot[:, ji_mask])  # * global rotation [N, 6, 3, 3]
             b += l
-            
-            # grot, joint, vert = body_model.forward_kinematics(p, shape[i], tran[b:b + l], calc_mesh=True)
-
-            # out_pose.append(p.clone())  # N, 24, 3, 3
-            # out_tran.append(tran[b:b + l].clone())  # N, 3
-            # out_shape.append(shape[i].clone())  # 10
-            # out_joint.append(joint[:, :24].contiguous().clone())  # N, 24, 3
-            # out_vacc.append(_syn_acc(vert[:, vi_mask]))  # N, 6, 3
-            # out_contact.append(_foot_ground_probs(joint).clone()) # N, 2
-
-            # out_vrot.append(grot[:, ji_mask])  # N, 6, 3, 3
-            # b += l
 
         print("Saving...")
         # print(out_vacc.shape, out_pose.shape)
