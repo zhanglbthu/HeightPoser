@@ -131,12 +131,12 @@ class datasets:
     }
 
     # AMASS datasets (add more as they become available in AMASS!)
-    # amass_datasets = ['ACCAD', 'BioMotionLab_NTroje', 'BMLhandball', 'BMLmovi', 'CMU', 
-    #                   'DanceDB', 'DFaust_67', 'EKUT', 'Eyes_Japan_Dataset', 'HUMAN4D',
-    #                   'HumanEva', 'KIT', 'MPI_HDM05', 'MPI_Limits', 'MPI_mosh', 'SFU',
-    #                   'SSM_synced', 'TCD_handMocap', 'TotalCapture', 'Transitions_mocap']
+    amass_datasets = ['ACCAD', 'BioMotionLab_NTroje', 'BMLhandball', 'BMLmovi', 'CMU', 
+                      'DanceDB', 'DFaust_67', 'EKUT', 'Eyes_Japan_Dataset', 'HUMAN4D',
+                      'HumanEva', 'KIT', 'MPI_HDM05', 'MPI_Limits', 'MPI_mosh', 'SFU',
+                      'SSM_synced', 'TCD_handMocap', 'TotalCapture', 'Transitions_mocap', 'dip_train']
     
-    amass_datasets = ['CMU']
+    # amass_datasets = ['CMU']
 
     # Root-relative joint positions
     root_relative = False

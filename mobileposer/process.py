@@ -57,17 +57,17 @@ def _foot_min(joint, fix=False):
     return min_y
 
 def _get_heights(vert, ground):
-    # pocket = vert[:, vi_mask[3], 1].unsqueeze(1)
-    # pocket_height = vert[:, vi_mask[3], 1].unsqueeze(1) - ground
-    # wrist_height = vert[:, vi_mask[0], 1].unsqueeze(1) - ground
-    
-    # # return [N, 2]
-    # return torch.stack((pocket_height, wrist_height), dim=1)
-    
-    root_height = vert[:, vi_mask[5], 1].unsqueeze(1) - ground
+    pocket = vert[:, vi_mask[3], 1].unsqueeze(1)
+    pocket_height = vert[:, vi_mask[3], 1].unsqueeze(1) - ground
     wrist_height = vert[:, vi_mask[0], 1].unsqueeze(1) - ground
     
-    return torch.stack((root_height, wrist_height), dim=1)
+    # return [N, 2]
+    return torch.stack((pocket_height, wrist_height), dim=1)
+    
+    # root_height = vert[:, vi_mask[5], 1].unsqueeze(1) - ground
+    # wrist_height = vert[:, vi_mask[0], 1].unsqueeze(1) - ground
+    
+    # return torch.stack((root_height, wrist_height), dim=1)
 
 def process_amass():
     def _foot_ground_probs(joint):
@@ -263,7 +263,7 @@ def process_totalcapture():
         vacc = _syn_acc(vert[:, vi_mask])
         rheights.append(_relative_height(vert))
         
-        ground = _foot_min(joint, fix=True)
+        ground = _foot_min(joint, fix=False)
         
         heights.append(_get_heights(vert, ground).squeeze())
         
@@ -339,7 +339,7 @@ def process_dipimu(split="test"):
                     joints.append(joint)
                     rheights.append(_relative_height(vert))
                     
-                    ground = _foot_min(joint, fix=True)
+                    ground = _foot_min(joint, fix=False)
                     heights.append(_get_heights(vert, ground))
                     
                 else:
@@ -403,7 +403,7 @@ def process_imuposer(split: str="train"):
                 trans.append(tran)  # N, 3
                 rheights.append(_relative_height(vert))  # N
                 
-                ground = _foot_min(joint, fix=True)
+                ground = _foot_min(joint, fix=False)
                 heights.append(_get_heights(vert, ground))
 
     print(f"# Data Processed: {len(accs)}")

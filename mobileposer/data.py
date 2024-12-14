@@ -16,11 +16,12 @@ from mobileposer.helpers import *
 
 
 class PoseDataset(Dataset):
-    def __init__(self, fold: str='train', evaluate: str=None, finetune: str=None):
+    def __init__(self, fold: str='train', evaluate: str=None, finetune: str=None, concat: bool=False):
         super().__init__()
         self.fold = fold
         self.evaluate = evaluate
         self.finetune = finetune
+        self.concat = concat
         self.bodymodel = art.model.ParametricModel(paths.smpl_file)
         self.combos = list(amass.combos.items()) # 12 combos
         print(f"combos: {self.combos}")
@@ -46,6 +47,11 @@ class PoseDataset(Dataset):
     def _prepare_dataset(self):
         data_folder = paths.processed_datasets / ('eval' if (self.finetune or self.evaluate) else '')
         data_files = self._get_data_files(data_folder)
+        
+        # 如果concat为False，则从data_files中去除'dip_train.pt'
+        if not self.concat:
+            data_files = [x for x in data_files if x != datasets.dip_train]
+        
         data = {key: [] for key in ['imu_inputs', 'pose_outputs', 'joint_outputs', 'tran_outputs', 'vel_outputs', 'foot_outputs']}
         for data_file in tqdm(data_files):
             try:
@@ -103,7 +109,7 @@ class PoseDataset(Dataset):
                             [imu_input, pose, joint, tran]):
             data[key].extend(torch.split(value, data_len))
             
-        if not (self.evaluate or self.finetune): # do not finetune translation module
+        if not (self.evaluate or self.finetune or self.concat): # do not finetune translation module
             self._process_translation_data(joint, tran, foot, data_len, data)
         
     def _process_combo_data(self, acc, ori, pose, joint, tran, foot, data):
@@ -133,6 +139,7 @@ class PoseDataset(Dataset):
         root_vel = torch.cat((torch.zeros(1, 3), tran[1:] - tran[:-1]))
         vel = torch.cat((torch.zeros(1, 24, 3), torch.diff(joint, dim=0)))
         vel[:, 0] = root_vel
+        
         data['vel_outputs'].extend(torch.split(vel * (datasets.fps / amass.vel_scale), data_len))
         data['foot_outputs'].extend(torch.split(foot, data_len))
 
@@ -143,7 +150,7 @@ class PoseDataset(Dataset):
         num_pred_joints = len(amass.pred_joints_set)
         pose = art.math.rotation_matrix_to_r6d(self.data['pose_outputs'][idx]).reshape(-1, num_pred_joints, 6)[:, amass.pred_joints_set].reshape(-1, 6*num_pred_joints)
 
-        if self.evaluate or self.finetune:
+        if self.evaluate or self.finetune or self.concat:
             return imu, pose, joint, tran
 
         vel = self.data['vel_outputs'][idx].float()
@@ -184,19 +191,20 @@ def pad_seq(batch):
     return (inputs, input_lengths), (outputs, output_lengths)
 
 class PoseDataModule(L.LightningDataModule):
-    def __init__(self, finetune: str = None):
+    def __init__(self, finetune: str = None, concat: bool = False):
         super().__init__()
         self.finetune = finetune
+        self.concat = concat
         self.hypers = finetune_hypers if self.finetune else train_hypers
 
     def setup(self, stage: str):
         if stage == 'fit':
-            dataset = PoseDataset(fold='train', finetune=self.finetune)
+            dataset = PoseDataset(fold='train', finetune=self.finetune, concat=self.concat)
             train_size = int(0.9 * len(dataset))
             val_size = len(dataset) - train_size
             self.train_dataset, self.val_dataset = random_split(dataset, [train_size, val_size])
         elif stage == 'test':
-            self.test_dataset = PoseDataset(fold='test', finetune=self.finetune)
+            self.test_dataset = PoseDataset(fold='test', finetune=self.finetune, concat=self.concat)
 
     def _dataloader(self, dataset):
         return DataLoader(

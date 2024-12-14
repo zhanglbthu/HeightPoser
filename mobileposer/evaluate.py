@@ -35,7 +35,7 @@ class PoseEvaluator:
                                   'Positional Error (cm)', 'Masked Positional Error (cm)', 'Mesh Error (cm)', 
                                   'Jitter Error (100m/s^3)', 'Distance Error (cm)']):
             print('%s: %.2f (+/- %.2f)' % (name, errors[i, 0], errors[i, 1]))
-
+            
     @staticmethod
     def print_single(errors, file=None):
         metric_names = [
@@ -152,9 +152,13 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
         print('============== online ================')
         evaluator.print(torch.stack(online_errs).mean(dim=0))
     
-    # for online_err in online_errs:
-    #     with open('data/eval/quantitative/mobileposer_wphys/imuposer.txt', 'a', encoding='utf-8') as f:
-    #         evaluator.print_single(online_err, file=f)
+    log_path = save_dir / 'log.txt'
+    
+    for online_err in online_errs:
+        # with open('data/eval/quantitative/mobileposer_wphys/imuposer.txt', 'a', encoding='utf-8') as f:
+        #     evaluator.print_single(online_err, file=f)
+        with open(log_path, 'a', encoding='utf-8') as f:
+            evaluator.print_single(online_err, file=f)
     
     # print translation errors
     if evaluate_tran:
@@ -165,6 +169,7 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--model', type=str, required=True)
     parser.add_argument('--dataset', type=str, default='dip')
+    parser.add_argument('--name', type=str, default='default')
     args = parser.parse_args()
 
     # record combo
@@ -174,12 +179,13 @@ if __name__ == '__main__':
     model = load_model(args.model)
 
     # load dataset
-    if args.dataset not in datasets.test_datasets:
-        raise ValueError(f"Test dataset: {args.dataset} not found.")
-    dataset = PoseDataset(fold='test', evaluate=args.dataset)
     
-    save_dir = Path('data') / 'eval' / args.dataset
-    os.makedirs(save_dir, exist_ok=True)
+    fold = 'test'
+    
+    dataset = PoseDataset(fold=fold, evaluate=args.dataset)
+    
+    save_dir = Path('data') / 'eval' / args.name / args.dataset
+    save_dir.mkdir(parents=True, exist_ok=True)
     
     # evaluate pose
     print(f"Starting evaluation: {args.dataset.capitalize()}")
