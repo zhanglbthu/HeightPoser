@@ -90,7 +90,13 @@ class TrainingManager:
         # create directory for module
         module_path = checkpoint_path / module_name
         make_dir(module_path)
-        datamodule = PoseDataModule(finetune=self.finetune)
+        
+        if module_name == "joints" or module_name == "poser":
+            concat = True
+        else:
+            concat = False
+            
+        datamodule = PoseDataModule(finetune=self.finetune,concat=concat)
         trainer = self._setup_trainer(module_path)
 
         print()
