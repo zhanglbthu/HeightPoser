@@ -140,6 +140,25 @@ def _get_heights(vert, ground):
     # return [N, 2]
     return torch.stack((pocket_height, wrist_height), dim=1)
 
+def _foot_contact(fp_list):
+    """
+    判断 n 帧中是否连续有至少一只脚接触地面。
+    
+    参数:
+        fp_list (list of tuples): 包含 n 帧的接触概率，每一帧的格式为 (fp[0], fp[1])。
+                                fp[0] 和 fp[1] 分别表示左右脚的接触概率或状态。
+    
+    返回:
+        bool: 如果 n 帧中至少有一只脚接触地面，则返回 True；否则返回 False。
+    """
+    for fp in fp_list:
+        if fp[0] or fp[1]:  # 判断当前帧是否有一只脚接触地面
+            continue
+        else:
+            # 只要有一帧没有脚接触地面，返回 False
+            return False
+    return True  # 所有帧都有至少一只脚接触地面
+
 def gen_amass_floor():
     def _foot_ground_probs(joint):
         """Compute foot-ground contact probabilities."""
@@ -158,25 +177,6 @@ def gen_amass_floor():
         rfeet = joint[:, 11]
         
         return torch.stack((lfeet, rfeet), dim=1)
-    
-    def _foot_contact(fp_list):
-        """
-        判断 n 帧中是否连续有至少一只脚接触地面。
-        
-        参数:
-            fp_list (list of tuples): 包含 n 帧的接触概率，每一帧的格式为 (fp[0], fp[1])。
-                                    fp[0] 和 fp[1] 分别表示左右脚的接触概率或状态。
-        
-        返回:
-            bool: 如果 n 帧中至少有一只脚接触地面，则返回 True；否则返回 False。
-        """
-        for fp in fp_list:
-            if fp[0] or fp[1]:  # 判断当前帧是否有一只脚接触地面
-                continue
-            else:
-                # 只要有一帧没有脚接触地面，返回 False
-                return False
-        return True  # 所有帧都有至少一只脚接触地面
     
     # enable skipping processed files
     try:

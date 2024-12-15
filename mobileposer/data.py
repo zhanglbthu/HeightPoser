@@ -13,6 +13,7 @@ import mobileposer.articulate as art
 from mobileposer.config import *
 from mobileposer.utils import *
 from mobileposer.helpers import *
+from auxiliary import normalize_and_concat
 
 
 class PoseDataset(Dataset):
@@ -95,6 +96,10 @@ class PoseDataset(Dataset):
         pose: [N, 24, 3, 3]
         '''
         c = self.combos[0][1] # [0, 3, 4]
+        
+        # change: convert to root + relative 
+        
+        
         combo_acc = acc[:, c]
         combo_ori = ori[:, c]
         imu_input = torch.cat([combo_acc.flatten(1), combo_ori.flatten(1)], dim=1) # [[N, 9], [N, 27]] => [N, 36]
