@@ -174,7 +174,7 @@ class MobilePoserNet(L.LightningModule):
         return pose, pred_joints, tran, contact
 
     @torch.no_grad()
-    def forward_online(self, data, input_lengths=None, debug=False): # data shape: [60]
+    def forward_online(self, data, input_lengths=None, debug=False, tran_nn=False): # data shape: [60]
         # preprocess data to imu: [total_frames, 60]
         imu = data.repeat(self.num_total_frames, 1) if self.imu is None else torch.cat((self.imu[1:], data.view(1, -1)))
 
@@ -196,10 +196,15 @@ class MobilePoserNet(L.LightningModule):
             contact_vel = self.last_rfoot_pos - rfoot_pos + self.gravity_velocity
 
         # velocity from network-based estimation
-        root_vel = vel.view(-1, 24, 3)[:, 0]
+        root_vel = vel.view(-1, 24, 3)[:, 0] # select root velocity
         pred_vel = root_vel[self.num_past_frames] / (datasets.fps/amass.vel_scale)
+        
         weight = self._prob_to_weight(contact.max())
         velocity = art.math.lerp(pred_vel, contact_vel, weight)
+        
+        if tran_nn:
+            # only use network-based velocity
+            velocity = contact_vel
 
         # remove penetration
         current_foot_y = self.current_root_y + min(lfoot_pos[1].item(), rfoot_pos[1].item())

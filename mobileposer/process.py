@@ -10,6 +10,8 @@ from mobileposer.articulate.model import ParametricModel
 from mobileposer.articulate import math
 from mobileposer.config import paths, datasets
 
+from pathlib import Path
+
 
 # specify target FPS
 TARGET_FPS = 30
@@ -68,6 +70,35 @@ def _get_heights(vert, ground):
     # wrist_height = vert[:, vi_mask[0], 1].unsqueeze(1) - ground
     
     # return torch.stack((root_height, wrist_height), dim=1)
+
+def _foot_contact(fp_list):
+    """
+    判断 n 帧中是否连续有至少一只脚接触地面。
+    
+    参数:
+        fp_list (list of tuples): 包含 n 帧的接触概率，每一帧的格式为 (fp[0], fp[1])。
+                                fp[0] 和 fp[1] 分别表示左右脚的接触概率或状态。
+    
+    返回:
+        bool: 如果 n 帧中至少有一只脚接触地面，则返回 True；否则返回 False。
+    """
+    for fp in fp_list:
+        if fp[0] or fp[1]:  # 判断当前帧是否有一只脚接触地面
+            continue
+        else:
+            # 只要有一帧没有脚接触地面，返回 False
+            return False
+    return True  # 所有帧都有至少一只脚接触地面
+
+def _foot_ground_probs(joint):
+    """Compute foot-ground contact probabilities."""
+    dist_lfeet = torch.norm(joint[1:, 10] - joint[:-1, 10], dim=1)
+    dist_rfeet = torch.norm(joint[1:, 11] - joint[:-1, 11], dim=1)
+    lfoot_contact = (dist_lfeet < 0.008).int()
+    rfoot_contact = (dist_rfeet < 0.008).int()
+    lfoot_contact = torch.cat((torch.zeros(1, dtype=torch.int), lfoot_contact))
+    rfoot_contact = torch.cat((torch.zeros(1, dtype=torch.int), rfoot_contact))
+    return torch.stack((lfoot_contact, rfoot_contact), dim=1)
 
 def process_amass():
     def _foot_ground_probs(joint):
@@ -302,6 +333,7 @@ def process_dipimu(split="test"):
     accs, oris, poses, trans, shapes, joints = [], [], [], [], [], []
     rheights = []
     heights = []
+
     for subject_name in subjects:
         for motion_name in os.listdir(os.path.join(paths.raw_dip, subject_name)):
             try:
@@ -339,6 +371,31 @@ def process_dipimu(split="test"):
                     joints.append(joint)
                     rheights.append(_relative_height(vert))
                     
+                    # contact_num = 5
+                    # fc_probs = _foot_ground_probs(joint).clone()
+                    # f_min = _foot_min(joint, fix=False)
+                    # cur_ground = f_min[0].item()
+                    
+                    # ground = torch.full_like(f_min, cur_ground)
+                    
+                    # for frame in range(fc_probs.shape[0]):
+                    #     g = f_min[frame].item()
+                        
+                    #     if frame >= contact_num:
+                    #         fp_last_n = fc_probs[frame - contact_num:frame]
+                    #     else:
+                    #         fp_last_n = fc_probs[:frame]
+                            
+                    #     ground[frame] = cur_ground
+                        
+                    #     contact = _foot_contact(fp_last_n)
+                    #     residual = abs(g - cur_ground)
+                    #     if contact and residual > 1e-3:
+                    #         ground[frame] = g
+                    #         cur_ground = g
+                    #         if residual > 0.3:
+                    #             print(f"Warning: {subject_name}/{motion_name} has a large residual: {residual}")
+                            
                     ground = _foot_min(joint, fix=False)
                     heights.append(_get_heights(vert, ground))
                     

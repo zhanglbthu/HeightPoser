@@ -69,7 +69,7 @@ class PoseEvaluator:
 
 @torch.no_grad()
 def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluate_tran=False,
-                  save_dir=None):
+                  save_dir=None, tran_nn=False):
     # specify device
     device = model_config.device
 
@@ -99,7 +99,7 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
             pose_t = art.math.r6d_to_rotation_matrix(pose_t)
 
             if getenv("ONLINE"):
-                online_results = [model.forward_online(f, debug=True) for f in torch.cat((x, x[-1].repeat(num_future_frame, 1)))]
+                online_results = [model.forward_online(f, debug=True, tran_nn=tran_nn) for f in torch.cat((x, x[-1].repeat(num_future_frame, 1)))]
                 pose_p_online, joint_p_online, tran_p_online, contact_p_online = [torch.stack(_)[num_future_frame:] for _ in zip(*online_results)]
 
             if evaluate_tran:
@@ -124,7 +124,8 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
                     # calculate mean distance error 
                     errs = []
                     for start, end in frame_pairs:
-                        vel_p = tran_p_offline[end] - tran_p_offline[start]
+                        # vel_p = tran_p_offline[end] - tran_p_offline[start]
+                        vel_p = tran_p_online[end] - tran_p_online[start]
                         vel_t = (tran_t[end] - tran_t[start]).to(device)
                         errs.append((vel_t - vel_p).norm() / (move_distance_t[end] - move_distance_t[start]) * window_size)
                     if len(errs) > 0:
@@ -187,6 +188,9 @@ if __name__ == '__main__':
     save_dir = Path('data') / 'eval' / args.name / args.dataset
     save_dir.mkdir(parents=True, exist_ok=True)
     
+    tran_nn = False
+    print("tran_nn: ", tran_nn)
+    
     # evaluate pose
     print(f"Starting evaluation: {args.dataset.capitalize()}")
-    evaluate_pose(model, dataset, evaluate_tran=True, save_dir=save_dir)
+    evaluate_pose(model, dataset, evaluate_tran=True, save_dir=save_dir, tran_nn=tran_nn)
