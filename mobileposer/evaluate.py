@@ -124,7 +124,8 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
                     # calculate mean distance error 
                     errs = []
                     for start, end in frame_pairs:
-                        vel_p = tran_p_offline[end] - tran_p_offline[start]
+                        # vel_p = tran_p_offline[end] - tran_p_offline[start]
+                        vel_p = tran_p_online[end] - tran_p_online[start]
                         vel_t = (tran_t[end] - tran_t[start]).to(device)
                         errs.append((vel_t - vel_p).norm() / (move_distance_t[end] - move_distance_t[start]) * window_size)
                     if len(errs) > 0:
