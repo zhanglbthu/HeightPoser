@@ -123,10 +123,13 @@ def get_checkpoint_path(finetune: str, init_from: str):
 
     else:
         # make directory for trained models
-        dir_name = get_dir_number(paths.checkpoint) 
-        checkpoint_path = paths.checkpoint / str(dir_name)
+        if init_from is not None:
+            checkpoint_path = Path(init_from)
+        else:
+            dir_name = get_dir_number(paths.checkpoint) 
+            checkpoint_path = paths.checkpoint / str(dir_name)
     
-    make_dir(checkpoint_path)
+    os.makedirs(checkpoint_path, exist_ok=True)
     return Path(checkpoint_path)
 
 if __name__ == "__main__":
@@ -162,7 +165,7 @@ if __name__ == "__main__":
         if args.finetune: 
             model_path = get_best_checkpoint(model_dir)
             model = module.from_pretrained(model_path=os.path.join(model_dir, model_path)) # load pre-trained model
-
+        
         training_manager.train_module(model, args.module, checkpoint_path)
     else:
         # train all modules

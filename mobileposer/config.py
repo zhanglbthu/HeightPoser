@@ -136,7 +136,7 @@ class datasets:
                       'HumanEva', 'KIT', 'MPI_HDM05', 'MPI_Limits', 'MPI_mosh', 'SFU',
                       'SSM_synced', 'TCD_handMocap', 'TotalCapture', 'Transitions_mocap', 'dip_train']
     
-    # amass_datasets = ['CMU']
+    # amass_datasets = ['TotalCapture']
 
     # Root-relative joint positions
     root_relative = False

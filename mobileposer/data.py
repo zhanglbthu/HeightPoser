@@ -32,6 +32,8 @@ class PoseDataset(Dataset):
             return self._get_train_files(data_folder)
         elif self.fold == 'test':
             return self._get_test_files()
+        elif self.fold == 'debug':
+            return [self.evaluate + '.pt']
         else:
             raise ValueError(f"Unknown data fold: {self.fold}.")
 
@@ -46,6 +48,9 @@ class PoseDataset(Dataset):
 
     def _prepare_dataset(self):
         data_folder = paths.processed_datasets / ('eval' if (self.finetune or self.evaluate) else '')
+        if self.fold == 'debug':
+            data_folder = paths.processed_datasets
+        
         data_files = self._get_data_files(data_folder)
         
         # 如果concat为False，则从data_files中去除'dip_train.pt'

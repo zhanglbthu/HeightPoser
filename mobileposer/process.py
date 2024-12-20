@@ -100,7 +100,7 @@ def _foot_ground_probs(joint):
     rfoot_contact = torch.cat((torch.zeros(1, dtype=torch.int), rfoot_contact))
     return torch.stack((lfoot_contact, rfoot_contact), dim=1)
 
-def process_amass():
+def process_amass(dataset=None):
     def _foot_ground_probs(joint):
         """Compute foot-ground contact probabilities."""
         dist_lfeet = torch.norm(joint[1:, 10] - joint[:-1, 10], dim=1)
@@ -117,7 +117,15 @@ def process_amass():
     except FileNotFoundError:
         processed = []
 
+    if dataset is not None:
+        processed = []
+    
     for ds_name in datasets.amass_datasets:
+        
+        if dataset:
+            if ds_name != dataset:
+                continue
+        
         # skip processed 
         if f"{ds_name}.pt" in processed:
             continue
@@ -127,8 +135,6 @@ def process_amass():
 
         for npz_fname in tqdm(sorted(glob.glob(os.path.join(paths.raw_amass, ds_name, "*/*_poses.npz")))):
             # 如果npz_frame不以36开头，那么就跳过
-            if not npz_fname.split("/")[-1].startswith("36"):
-                continue
             
             try: cdata = np.load(npz_fname)
             except: continue
@@ -195,7 +201,10 @@ def process_amass():
             'contact': out_contact,
             'rheight': out_rheight
         }
-        data_path = paths.processed_datasets / f"{ds_name}.pt"
+        if dataset:
+            data_path = paths.processed_datasets / "debug" / f"{ds_name}.pt"
+        else:
+            data_path = paths.processed_datasets / f"{ds_name}.pt"
         torch.save(data, data_path)
         print(f"Synthetic AMASS dataset is saved at: {data_path}")
 
@@ -216,6 +225,10 @@ def process_totalcapture():
     accs, oris, poses, trans = [], [], [], []
     heights = []
     rheights = []
+    
+    # downsampling
+    step = max(1, round(60 / TARGET_FPS))
+    
     for file in sorted(os.listdir(paths.calibrated_totalcapture)):
         if not file.endswith(".pkl") or ('s5' in file and 'acting3' in file) or not any(file.startswith(s.lower()) for s in subjects):
             continue
@@ -224,26 +237,34 @@ def process_totalcapture():
         ori = torch.from_numpy(data['ori']).float() # [N, 6, 3, 3]
         acc = torch.from_numpy(data['acc']).float() # [N, 6, 3]
 
-        # Load pose data from AMASS
-        try: 
-            name_split = file.split("_")
-            subject, activity = name_split[0], name_split[1].split(".")[0]
-            pose_npz = np.load(os.path.join(paths.raw_amass, "TotalCapture", subject, f"{activity}_poses.npz"))
-            pose = torch.from_numpy(pose_npz['poses']).float().view(-1, 52, 3)
+        # load pose from dip calibration
+        pose = torch.from_numpy(data['gt']).float().view(-1, 24, 3)
+        
+        # downsample
+        acc = acc[::step].contiguous()
+        ori = ori[::step].contiguous()
+        pose = pose[::step].contiguous()
+        
+        # # Load pose data from AMASS
+        # try: 
+        #     name_split = file.split("_")
+        #     subject, activity = name_split[0], name_split[1].split(".")[0]
+        #     pose_npz = np.load(os.path.join(paths.raw_amass, "TotalCapture", subject, f"{activity}_poses.npz"))
+        #     pose = torch.from_numpy(pose_npz['poses']).float().view(-1, 52, 3)
             
-            # include the left and right index fingers in the pose
-            pose[:, 23] = pose[:, 37]     # right hand
-            pose = pose[:, :24].clone()   # only use body + right and left fingers
+        #     # include the left and right index fingers in the pose
+        #     pose[:, 23] = pose[:, 37]     # right hand
+        #     pose = pose[:, :24].clone()   # only use body + right and left fingers
             
-            # align AMASS global frame with DIP
-            amass_rot = torch.tensor([[[1, 0, 0], [0, 0, 1], [0, -1, 0.]]])
-            pose[:, 0] = math.rotation_matrix_to_axis_angle(
-                amass_rot.matmul(math.axis_angle_to_rotation_matrix(pose[:, 0])))
+        #     # align AMASS global frame with DIP
+        #     amass_rot = torch.tensor([[[1, 0, 0], [0, 0, 1], [0, -1, 0.]]])
+        #     pose[:, 0] = math.rotation_matrix_to_axis_angle(
+        #         amass_rot.matmul(math.axis_angle_to_rotation_matrix(pose[:, 0])))
             
-        except:
-            failed_to_process.append(f"{subject}_{activity}")
-            print(f"Failed to Process: {file}")
-            continue
+        # except:
+        #     failed_to_process.append(f"{subject}_{activity}")
+        #     print(f"Failed to Process: {file}")
+        #     continue
 
         # pose = tc_poses[pose.shape[0]]
     
@@ -253,7 +274,7 @@ def process_totalcapture():
         elif acc.shape[0] > pose.shape[0]:
             acc = acc[:pose.shape[0]]
             ori = ori[:pose.shape[0]]
-
+        
         # convert axis-angle to rotation matrix
         pose = math.axis_angle_to_rotation_matrix(pose).view(-1, 24, 3, 3)
 
@@ -281,6 +302,9 @@ def process_totalcapture():
             pos[:, :, 2].neg_()
             trans.append(pos[:, 2] - pos[:1, 2])   # N, 3
 
+    # downsample
+    trans = [t[::step] for t in trans]
+    
     # match trans with poses
     for i in range(len(accs)):
         if accs[i].shape[0] < trans[i].shape[0]:
@@ -288,9 +312,10 @@ def process_totalcapture():
         assert trans[i].shape[0] == accs[i].shape[0]
 
     # remove acceleration bias and add relative height
+    v_accs, v_oris = [], []
     for iacc, pose, tran in zip(accs, poses, trans):
         pose = pose.view(-1, 24, 3, 3)
-        _, joint, vert = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
+        grot, joint, vert = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
         vacc = _syn_acc(vert[:, vi_mask])
         rheights.append(_relative_height(vert))
         
@@ -298,14 +323,17 @@ def process_totalcapture():
         
         heights.append(_get_heights(vert, ground).squeeze())
         
+        v_accs.append(vacc)
+        v_oris.append(grot[:, ji_mask])
+        
         for imu_id in range(6):
             for i in range(3):
                 d = -iacc[:, imu_id, i].mean() + vacc[:, imu_id, i].mean()
                 iacc[:, imu_id, i] += d
 
     data = {
-        'acc': accs,
-        'ori': oris,
+        'acc': v_accs,
+        'ori': v_oris,
         'pose': poses,
         'tran': trans,
         'rheight': rheights,
@@ -313,7 +341,7 @@ def process_totalcapture():
     }
     data_path = paths.eval_dir / "totalcapture.pt"
     torch.save(data, data_path)
-    print("Preprocessed TotalCapture dataset is saved at:", paths.processed_totalcapture)
+    print("Preprocessed TotalCapture dataset is saved at:", data_path)
 
 def process_dipimu(split="test"):
     """Preprocess DIP for finetuning and evaluation."""
@@ -430,6 +458,9 @@ def process_imuposer(split: str="train"):
     accs, oris, poses, trans = [], [], [], []
     rheights = []
     heights = []
+    
+    step = max(1, round(60 / TARGET_FPS))
+    
     for pid_path in sorted(paths.raw_imuposer.iterdir()):
         if pid_path.name not in subjects:
             continue
@@ -444,6 +475,12 @@ def process_imuposer(split: str="train"):
                 pose = math.axis_angle_to_rotation_matrix(fdata['pose']).view(-1, 24, 3, 3)
                 tran = fdata['trans'].to(torch.float32)
                 
+                # downsample
+                acc = acc[::step].contiguous()
+                ori = ori[::step].contiguous()
+                pose = pose[::step].contiguous()
+                tran = tran[::step].contiguous()
+                
                  # align IMUPoser global fame with DIP
                 rot = torch.tensor([[[-1, 0, 0], [0, 0, 1], [0, 1, 0.]]])
                 pose[:, 0] = rot.matmul(pose[:, 0])
@@ -453,6 +490,9 @@ def process_imuposer(split: str="train"):
                 assert tran.shape[0] == pose.shape[0]
                 
                 grot, joint, vert = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
+                
+                acc = _syn_acc(vert[:, vi_mask])
+                ori = grot[:, ji_mask]
 
                 accs.append(acc)    # N, 5, 3
                 oris.append(ori)    # N, 5, 3, 3
@@ -482,6 +522,7 @@ def create_directories():
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--dataset", default="amass")
+    parser.add_argument("--debug", default=None)
     args = parser.parse_args()
 
     # create dataset directories
@@ -489,7 +530,11 @@ if __name__ == "__main__":
 
     # process datasets
     if args.dataset == "amass":
-        process_amass()
+        if args.debug is not None:
+            print("Debugging dataset: ", args.debug)
+            process_amass(args.debug)
+        else:
+            process_amass() 
     elif args.dataset == "totalcapture":
         process_totalcapture()
     elif args.dataset == "imuposer":

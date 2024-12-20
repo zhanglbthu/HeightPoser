@@ -10,7 +10,7 @@ from pathlib import Path
 from tqdm import tqdm 
 from argparse import ArgumentParser
 
-from mobileposer.models import MobilePoserNet, Poser, Joints, Velocity, FootContact
+from mobileposer.models import MobilePoserNet, Poser, Joints, Velocity, FootContact, Velocity_new
 from mobileposer.constants import MODULES
 from mobileposer.utils.file_utils import get_file_number, get_best_checkpoint
 
