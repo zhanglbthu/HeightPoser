@@ -72,16 +72,12 @@ class PoseEvaluator:
         # 如果需要在末尾换行，print 本身就会换行，无需额外操作
 
 @torch.no_grad()
-def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluate_tran=False,
-                  save_dir=None, tran_nn=False):
+def evaluate_tran(model, dataset, num_past_frame=20, num_future_frame=5, evaluate_tran=False,
+                  save_dir=None):
     # specify device
     device = model_config.device
-
-    # load data
-    # xs: [contact_seq_num, N, 60], ys: ([contact_seq_num, N, 144], [contact_seq_num, N, 3])
-    # xs, ys, zs = zip(*[(imu.to(device), (pose.to(device), tran), (velocity.to(device), contact.to(device))) for imu, pose, joint, tran, velocity, contact in dataset])
+    
     xs, ys = zip(*[(imu.to(device), (pose.to(device), tran)) for imu, pose, joint, tran in dataset])
-    joints_t = [joint.to(device) for _, _, joint, _ in dataset]
 
     # setup Pose Evaluator
     evaluator = PoseEvaluator()
@@ -95,19 +91,12 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
         for idx, (x, y) in enumerate(tqdm.tqdm(zip(xs, ys), total=len(xs))):
             # x: [N, 60], y: ([N, 144], [N, 3])
             model.reset()
-            pose_p_offline, joint_p_offline, tran_p_offline, _ = model.forward_offline(x.unsqueeze(0), [x.shape[0]])
             pose_t, tran_t = y
-            
-            # vel_t, contact_t = zs[idx]
-            
             pose_t = art.math.r6d_to_rotation_matrix(pose_t)
 
             if getenv("ONLINE"):
-                online_results = [model.forward_online(f, debug=True, tran_nn=tran_nn) for f in torch.cat((x, x[-1].repeat(num_future_frame, 1)))]
-                pose_p_online, joint_p_online, tran_p_online, contact_p_online = [torch.stack(_)[num_future_frame:] for _ in zip(*online_results)]
-                
-                # # 将tran_p的y值设为ground truth的y值
-                # tran_p_online[:, 1] = tran_t[:, 1]
+                online_results = [model.forward_online_tran(f) for f in torch.cat((x, x[-1].repeat(num_future_frame, 1)))]
+                tran_p_online = torch.stack(online_results)[num_future_frame:]
 
             if evaluate_tran:
                 # compute gt move distance at every frame 
@@ -131,46 +120,27 @@ def evaluate_pose(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
                     # calculate mean distance error 
                     errs = []
                     for start, end in frame_pairs:
-                        # vel_p = tran_p_offline[end] - tran_p_offline[start]
                         vel_p = tran_p_online[end] - tran_p_online[start]
                         vel_t = (tran_t[end] - tran_t[start]).to(device)
                         errs.append((vel_t - vel_p).norm() / (move_distance_t[end] - move_distance_t[start]) * window_size)
                     if len(errs) > 0:
                         tran_errors[window_size].append(sum(errs) / len(errs))
 
-            offline_errs.append(evaluator.eval(pose_p_offline, pose_t, tran_p=tran_p_offline, tran_t=tran_t))
             if getenv("ONLINE"):
-                online_errs.append(evaluator.eval(pose_p_online, pose_t, tran_p=tran_p_online, tran_t=tran_t))
-            
-            # save pose_t, pose_p_online, tran_t, tran_p_online to one .pt file
-            joint_t = joints_t[idx]
+                online_errs.append(evaluator.eval(pose_t, pose_t, tran_p=tran_p_online, tran_t=tran_t))
+    
             if save_dir:
-                torch.save({'pose_t': pose_t, 
-                            'pose_p': pose_p_online, 
-                            'tran_t': tran_t, 
-                            'tran_p': tran_p_online,
-                            'joint_t': joint_t,
-                            'joint_p': joint_p_online},
-                           save_dir / f"{idx}.pt")
-
-    # print joint errors
-    # print('============== offline ================')
-    # evaluator.print(torch.stack(offline_errs).mean(dim=0))
-    if getenv("ONLINE"):
-        print('============== online ================')
-        evaluator.print(torch.stack(online_errs).mean(dim=0))
+                torch.save({'tran_t': tran_t, 
+                            'tran_p': tran_p_online,},
+                            save_dir / f"{idx}.pt")
     
     log_path = save_dir / 'log.txt'
     
-    for online_err in online_errs:
-        # with open('data/eval/quantitative/mobileposer_wphys/imuposer.txt', 'a', encoding='utf-8') as f:
-        #     evaluator.print_single(online_err, file=f)
-        with open(log_path, 'a', encoding='utf-8') as f:
-            evaluator.print_single(online_err, file=f)
-    
-    # print translation errors
-    if evaluate_tran:
-        print([0] + [torch.tensor(_).mean() for _ in tran_errors.values()])
+    with open(log_path, 'a') as f:
+        # print translation errors
+        if evaluate_tran:
+            # print([0] + [torch.tensor(_).mean() for _ in tran_errors.values()])
+            print([0] + ["{:.4f}".format(torch.tensor(_).mean().item()) for _ in tran_errors.values()], file=f)
 
 
 if __name__ == '__main__':
@@ -178,34 +148,27 @@ if __name__ == '__main__':
     parser.add_argument('--model', type=str, required=True)
     parser.add_argument('--dataset', type=str, default='dip')
     parser.add_argument('--name', type=str, default='default')
-    parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
-    # record combo
-    print(f"combo: {amass.combos}")
+    model_dir = Path(paths.checkpoint) / 'translation' / 'velocity_new' / args.model
+    
+    checkpoint_path = get_best_checkpoint(model_dir)
+    checkpoint = torch.load(model_dir / checkpoint_path, map_location=model_config.device)
 
+    print(f"Loading model from {checkpoint_path}")
+    
     # load model 
-    model = load_model(args.model)
+    model = Velocity_new(combo_id=args.model).to(model_config.device)
+    
+    model.load_state_dict(checkpoint['state_dict'])
 
-    # # load_translation_model
-    # ckpt_dir = Path('data') / 'checkpoints' / 'floor' / 'velocity_new'
-    # ckpt_name = get_best_checkpoint(ckpt_dir)
-    # velocity_model = Velocity_new.load_from_checkpoint(ckpt_dir / ckpt_name)
-    
-    # load dataset
-    
     fold = 'test'
-    if args.debug:
-        fold = 'debug'
     
-    dataset = PoseDataset(fold=fold, evaluate=args.dataset)
+    dataset = PoseDataset(fold=fold, evaluate=args.dataset, combo_id=args.model)
     
-    save_dir = Path('data') / 'eval' / args.name / args.dataset
+    save_dir = Path('data') / 'eval_tran' / args.name / args.model / args.dataset
     save_dir.mkdir(parents=True, exist_ok=True)
-    
-    tran_nn = True
-    print("tran_nn: ", tran_nn)
     
     # evaluate pose
     print(f"Starting evaluation: {args.dataset.capitalize()}")
-    evaluate_pose(model, dataset, evaluate_tran=True, save_dir=save_dir, tran_nn=tran_nn)
+    evaluate_tran(model, dataset, evaluate_tran=True, save_dir=save_dir)

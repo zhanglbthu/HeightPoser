@@ -122,6 +122,12 @@ class MobilePoserNet(L.LightningModule):
 
         return pred_pose, pred_joints, pred_vel, foot_contact
 
+    def forward_vel(self, batch, input_lengths=None):
+        vel_input = batch[:, :, :self.C.n_imu]
+        pred_vel = self.velocity.forward_online(vel_input, input_lengths).squeeze(0)
+        
+        return pred_vel
+    
     @torch.no_grad()
     def forward_offline(self, imu, input_lengths=None):
         '''
@@ -177,6 +183,23 @@ class MobilePoserNet(L.LightningModule):
 
         return pose, pred_joints, tran, contact
 
+    @torch.no_grad()
+    def forward_online_tran(self, data, input_lengths=None):
+        imu = data.repeat(self.num_total_frames, 1) if self.imu is None else torch.cat((self.imu[1:], data.view(1, -1)))
+
+        vel = self.forward_vel(imu.unsqueeze(0), [self.num_total_frames])
+        
+        root_vel = vel.view(-1, 24, 3)[:, 0]
+        
+        pred_vel = root_vel[self.num_past_frames] / (datasets.fps/amass.vel_scale)
+        
+        velocity = pred_vel
+        
+        self.last_root_pos += velocity
+        self.imu = imu.squeeze(0)
+        
+        return self.last_root_pos.clone()
+        
     @torch.no_grad()
     def forward_online(self, data, input_lengths=None, debug=False, tran_nn=False): # data shape: [60]
         # preprocess data to imu: [total_frames, 60]

@@ -16,7 +16,7 @@ from mobileposer.helpers import *
 
 
 class PoseDataset(Dataset):
-    def __init__(self, fold: str='train', evaluate: str=None, finetune: str=None, concat: bool=False):
+    def __init__(self, fold: str='train', evaluate: str=None, finetune: str=None, concat: bool=False, combo_id: str=None):
         super().__init__()
         self.fold = fold
         self.evaluate = evaluate
@@ -24,7 +24,8 @@ class PoseDataset(Dataset):
         self.concat = concat
         self.bodymodel = art.model.ParametricModel(paths.smpl_file)
         self.combos = list(amass.combos.items()) # 12 combos
-        print(f"combos: {self.combos}")
+        self.imu_set = amass.combos_mine[combo_id] if combo_id else None
+        print(f"imu_set: {self.imu_set}")
         self.data = self._prepare_dataset()
 
     def _get_data_files(self, data_folder):
@@ -99,7 +100,9 @@ class PoseDataset(Dataset):
         ori: [N, 5, 3, 3]
         pose: [N, 24, 3, 3]
         '''
-        c = self.combos[0][1] # [0, 3, 4]
+        # c = self.combos[0][1] # [0, 3, 4]
+        c = self.imu_set
+        
         combo_acc = acc[:, c]
         combo_ori = ori[:, c]
         imu_input = torch.cat([combo_acc.flatten(1), combo_ori.flatten(1)], dim=1) # [[N, 9], [N, 27]] => [N, 36]
@@ -196,20 +199,21 @@ def pad_seq(batch):
     return (inputs, input_lengths), (outputs, output_lengths)
 
 class PoseDataModule(L.LightningDataModule):
-    def __init__(self, finetune: str = None, concat: bool = False):
+    def __init__(self, finetune: str = None, concat: bool = False, combo_id: str = None):
         super().__init__()
         self.finetune = finetune
         self.concat = concat
+        self.combo_id = combo_id
         self.hypers = finetune_hypers if self.finetune else train_hypers
 
     def setup(self, stage: str):
         if stage == 'fit':
-            dataset = PoseDataset(fold='train', finetune=self.finetune, concat=self.concat)
+            dataset = PoseDataset(fold='train', finetune=self.finetune, concat=self.concat, combo_id=self.combo_id)
             train_size = int(0.9 * len(dataset))
             val_size = len(dataset) - train_size
             self.train_dataset, self.val_dataset = random_split(dataset, [train_size, val_size])
         elif stage == 'test':
-            self.test_dataset = PoseDataset(fold='test', finetune=self.finetune, concat=self.concat)
+            self.test_dataset = PoseDataset(fold='test', finetune=self.finetune, concat=self.concat, combo_id=self.combo_id)
 
     def _dataloader(self, dataset):
         return DataLoader(

@@ -80,6 +80,16 @@ class amass:
         # 'lp': [2],
         # 'rp': [3],
      }
+    
+    combos_mine = {
+        'lw_rw_lp_rp_h': [0, 1, 2, 3, 4],
+        'lw_rp_h': [0, 3, 4],
+        'lw_rw_h': [0, 1, 4],
+        'lw': [0],
+        'rp': [3],
+        'h': [4]
+    }
+    
     acc_scale = 30
     vel_scale = 2
 

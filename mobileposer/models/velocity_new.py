@@ -10,15 +10,17 @@ from mobileposer.articulate.model import ParametricModel
 from mobileposer.models.rnn import RNN
 from mobileposer.config import *
 
-
 class Velocity_new(L.LightningModule):
     """
     Inputs: N IMUs.
     Outputs: Per-Frame Root Velocity. 
     """
 
-    def __init__(self):
+    def __init__(self, combo_id = None):
         super().__init__()
+        
+        self.imu_set = amass.combos_mine[combo_id]
+        self.imu_nums = len(self.imu_set)
         
         # constants
         self.C = model_config
@@ -26,12 +28,11 @@ class Velocity_new(L.LightningModule):
         self.bodymodel = ParametricModel(paths.smpl_file, device=self.C.device)
 
         # model definitions
-        self.vel = RNN(self.C.n_imu, 24 * 3, 256, bidirectional=False)  # per-frame velocity of the root joint. 
+        self.vel = RNN(12 * self.imu_nums, 3, 256, bidirectional=False)  # per-frame velocity of the root joint. 
         self.rnn_state = None
 
         # log input and output dimensions
-        print(f"Input dimensions: {self.C.n_imu}")
-        print(f"Output dimensions: {24*3}")
+        print(f"combo_id: {combo_id}")
         
         # loss function 
         self.loss = nn.MSELoss()
@@ -40,6 +41,16 @@ class Velocity_new(L.LightningModule):
         self.validation_step_loss = []
         self.training_step_loss = []
         self.save_hyperparameters()
+        
+        # constants
+        self.num_past_frames = model_config.past_frames
+        self.num_future_frames = model_config.future_frames
+        self.num_total_frames = self.num_past_frames + self.num_future_frames
+
+    def reset(self):
+        self.rnn_state = None
+        self.imu = None
+        self.last_root_pos = torch.zeros(3).to(self.C.device)
 
     def forward(self, batch, input_lengths=None):
         # forward velocity model
@@ -51,6 +62,22 @@ class Velocity_new(L.LightningModule):
         vel, _, self.rnn_state = self.vel(batch, input_lengths, self.rnn_state)
         return vel
 
+    def forward_online_tran(self, data, input_lengths=None):
+        imu = data.repeat(self.num_total_frames, 1) if self.imu is None else torch.cat((self.imu[1:], data.view(1, -1)))
+        
+        batch = imu.unsqueeze(0)
+        vel_input = batch[:, :, :12*self.imu_nums]
+        
+        vel = self.forward_online(vel_input, input_lengths).squeeze(0)
+        
+        root_vel = vel.view(-1, 3)
+        pred_vel = root_vel[self.num_past_frames] / (datasets.fps / amass.vel_scale)
+        
+        self.imu = imu.squeeze(0)
+        self.last_root_pos += pred_vel
+        
+        return self.last_root_pos.clone()
+    
     def shared_step(self, batch):
         # unpack data
         inputs, outputs = batch
@@ -63,14 +90,11 @@ class Velocity_new(L.LightningModule):
 
         # target velocity
         target_vel = outputs['vels'].view(joints.shape[0], joints.shape[1], 72)
-
-        # # add noise to target joints for beter robustness
-        # noise = torch.randn(target_joints.size()).to(self.C.device) * 0.025 # gaussian noise with std = 0.025
-        # target_joints += noise
+        # only select root velocity
+        target_vel = target_vel[:, :, :3]
         
         # predict root joint velocity
-        # tran_input = torch.cat((target_joints, imu_inputs), dim=-1)
-        tran_input = imu_inputs[:, :, :self.C.n_imu] # change only use IMU data
+        tran_input = imu_inputs[:, :, :12*self.imu_nums]
         pred_vel, _, _ = self.vel(tran_input, input_lengths)
         loss = self.compute_loss(pred_vel, target_vel)
 

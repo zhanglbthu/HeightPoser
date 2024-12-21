@@ -5,6 +5,7 @@
     "version": "0.2.0",
     "configurations": [
 
+
         
         {
             "name": "evaluate dip",
@@ -23,6 +24,17 @@
             "program": "process.py",
             "console": "integratedTerminal",
             "args": ["--dataset", "totalcapture"],
+            "justMyCode": false
+        },
+        {
+            "name": "evaluate trans",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "evaluate_tran.py",
+            "console": "integratedTerminal",
+            "args": ["--model", "data/checkpoints/floor/base_model.pth",
+                     "--dataset", "imuposer",
+                     "--name", "lw_rp_h"],
             "justMyCode": false
         }
     ]

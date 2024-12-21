@@ -7,8 +7,7 @@ MODULES = {
     'joints': Joints, 
     'poser': Poser,
     'foot_contact': FootContact,
-    # 'velocity': Velocity,
-    'velocity_new': Velocity_new,
+    'velocity': Velocity,
 }
 
 # Calibration constants

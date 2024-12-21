@@ -26,6 +26,7 @@ from mobileposer.utils.file_utils import (
     get_best_checkpoint
 )
 from mobileposer.config import paths, train_hypers, finetune_hypers
+from mobileposer.models import Velocity_new
 
 
 # set precision for Tensor cores
@@ -83,12 +84,12 @@ class TrainingManager:
                 )
         return trainer
 
-    def train_module(self, model: L.LightningModule, module_name: str, checkpoint_path: Path):
+    def train_module(self, model: L.LightningModule, module_name: str, checkpoint_path: Path, combo_id: str=None):
         # set the appropriate hyperparameters
         model.hypers = self.hypers 
 
         # create directory for module
-        module_path = checkpoint_path / module_name
+        module_path = checkpoint_path / module_name / combo_id
         make_dir(module_path)
         
         if module_name == "joints" or module_name == "poser":
@@ -96,7 +97,7 @@ class TrainingManager:
         else:
             concat = False
             
-        datamodule = PoseDataModule(finetune=self.finetune,concat=concat)
+        datamodule = PoseDataModule(finetune=self.finetune, concat=concat, combo_id=combo_id)
         trainer = self._setup_trainer(module_path)
 
         print()
@@ -138,6 +139,7 @@ if __name__ == "__main__":
     parser.add_argument("--fast-dev-run", action="store_true")
     parser.add_argument("--finetune", type=str, default=None)
     parser.add_argument("--init-from", nargs="?", default="scratch", type=str)
+    parser.add_argument("--combo_id", type=str)
     args = parser.parse_args()
 
     # set seed for reproducible results
@@ -155,18 +157,22 @@ if __name__ == "__main__":
 
     # train single module
     if args.module:
-        if args.module not in MODULES.keys():
+        if args.module not in MODULES.keys() and args.module != "velocity_new":
             raise ValueError(f"Module {args.module} not found.")
 
         model_dir = Path(args.init_from)
-        module = MODULES[args.module]
-        model = module() # init model from scratch
+        
+        if args.module != "velocity_new":
+            module = MODULES[args.module]
+            model = module() # init model from scratch
+        else:
+            model = Velocity_new(combo_id=args.combo_id)
 
         if args.finetune: 
             model_path = get_best_checkpoint(model_dir)
             model = module.from_pretrained(model_path=os.path.join(model_dir, model_path)) # load pre-trained model
         
-        training_manager.train_module(model, args.module, checkpoint_path)
+        training_manager.train_module(model, args.module, checkpoint_path, combo_id=args.combo_id)
     else:
         # train all modules
         for module_name, module in MODULES.items():
