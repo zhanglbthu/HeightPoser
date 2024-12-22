@@ -86,6 +86,8 @@ def evaluate_tran(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
     offline_errs, online_errs = [], []
     tran_errors = {window_size: [] for window_size in list(range(1, 8))}
     
+    log_path = save_dir / 'log.txt'
+    
     model.eval()
     with torch.no_grad():
         for idx, (x, y) in enumerate(tqdm.tqdm(zip(xs, ys), total=len(xs))):
@@ -97,6 +99,9 @@ def evaluate_tran(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
             if getenv("ONLINE"):
                 online_results = [model.forward_online_tran(f) for f in torch.cat((x, x[-1].repeat(num_future_frame, 1)))]
                 tran_p_online = torch.stack(online_results)[num_future_frame:]
+                
+                # replace y with gt translation
+                tran_p_online[:, 1] = tran_t[:, 1]
 
             if evaluate_tran:
                 # compute gt move distance at every frame 
@@ -125,21 +130,28 @@ def evaluate_tran(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
                         errs.append((vel_t - vel_p).norm() / (move_distance_t[end] - move_distance_t[start]) * window_size)
                     if len(errs) > 0:
                         tran_errors[window_size].append(sum(errs) / len(errs))
-
+                        
+                        with open (log_path, 'a') as f:
+                            print("{:.4f}".format(sum(errs) / len(errs)), file=f, end=" ")
+                            if window_size == 7:
+                                print(file=f)
+                    else:
+                        with open (log_path, 'a') as f:
+                            print(file=f)
+                            
             if getenv("ONLINE"):
                 online_errs.append(evaluator.eval(pose_t, pose_t, tran_p=tran_p_online, tran_t=tran_t))
-    
+                
             if save_dir:
                 torch.save({'tran_t': tran_t, 
                             'tran_p': tran_p_online,},
                             save_dir / f"{idx}.pt")
     
-    log_path = save_dir / 'log.txt'
-    
     with open(log_path, 'a') as f:
         # print translation errors
         if evaluate_tran:
             # print([0] + [torch.tensor(_).mean() for _ in tran_errors.values()])
+            print()
             print([0] + ["{:.4f}".format(torch.tensor(_).mean().item()) for _ in tran_errors.values()], file=f)
 
 
@@ -150,7 +162,7 @@ if __name__ == '__main__':
     parser.add_argument('--name', type=str, default='default')
     args = parser.parse_args()
 
-    model_dir = Path(paths.checkpoint) / 'translation' / 'velocity_new' / args.model
+    model_dir = Path(paths.checkpoint) / 'translation' / args.name / args.model
     
     checkpoint_path = get_best_checkpoint(model_dir)
     checkpoint = torch.load(model_dir / checkpoint_path, map_location=model_config.device)

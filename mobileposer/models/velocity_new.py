@@ -7,7 +7,7 @@ import lightning as L
 from torch.optim.lr_scheduler import StepLR 
 
 from mobileposer.articulate.model import ParametricModel
-from mobileposer.models.rnn import RNN
+from mobileposer.models.rnn import RNN, RNNWithInit
 from mobileposer.config import *
 
 class Velocity_new(L.LightningModule):
@@ -28,7 +28,8 @@ class Velocity_new(L.LightningModule):
         self.bodymodel = ParametricModel(paths.smpl_file, device=self.C.device)
 
         # model definitions
-        self.vel = RNN(12 * self.imu_nums, 3, 256, bidirectional=False)  # per-frame velocity of the root joint. 
+        self.vel = RNN(12 * self.imu_nums, 3, 256, bidirectional=False)  # per-frame velocity of the root joint.
+        
         self.rnn_state = None
 
         # log input and output dimensions
@@ -101,7 +102,7 @@ class Velocity_new(L.LightningModule):
         return loss
 
     def compute_loss(self, pred_vel, gt_vel):
-        loss = sum(self.compute_vel_loss(pred_vel, gt_vel, i) for i in [1, 3, 9])
+        loss = sum(self.compute_vel_loss(pred_vel, gt_vel, i) for i in [1, 3, 9, 27])
         return loss
 
     def compute_vel_loss(self, pred_vel, gt_vel, n=1):

@@ -21,7 +21,6 @@ vi_mask = torch.tensor([1961, 5424, 876, 4362, 411, 3021])
 ji_mask = torch.tensor([18, 19, 1, 2, 15, 0])
 body_model = ParametricModel(paths.smpl_file)
 
-
 def _syn_acc(v, smooth_n=4):
     """Synthesize accelerations from vertex positions."""
     mid = smooth_n // 2
@@ -110,7 +109,29 @@ def process_amass(dataset=None):
         lfoot_contact = torch.cat((torch.zeros(1, dtype=torch.int), lfoot_contact))
         rfoot_contact = torch.cat((torch.zeros(1, dtype=torch.int), rfoot_contact))
         return torch.stack((lfoot_contact, rfoot_contact), dim=1)
+    
+    def _get_pocket_height(vert):
+        rp_height = vert[vi_mask[3], 1]
+        min_height = torch.min(vert[:, 1], dim=0).values
         
+        return rp_height - min_height
+    
+    def _get_scale(shape):
+        shape = torch.tensor(shape, dtype=torch.float32).unsqueeze(0)
+        
+        zero_pose = torch.eye(3).unsqueeze(0).unsqueeze(0).repeat(1, 24, 1, 1)
+        zero_shape = torch.zeros(10).unsqueeze(0)
+        
+        _, _, vert_zero = body_model.forward_kinematics(zero_pose, zero_shape, calc_mesh=True)
+        _, _, vert_shape = body_model.forward_kinematics(zero_pose, shape, calc_mesh=True)
+        
+        height_zero = _get_pocket_height(vert_zero.squeeze(0))
+        height_shape = _get_pocket_height(vert_shape.squeeze(0))
+        
+        scale = height_shape / height_zero
+        
+        return scale
+    
     # enable skipping processed files
     try:
         processed = [fpath.name for fpath in (paths.processed_datasets).iterdir()]
@@ -131,6 +152,8 @@ def process_amass(dataset=None):
             continue
 
         data_pose, data_trans, data_beta, length = [], [], [], []
+        scale_data = []
+        
         print("\rReading", ds_name)
 
         for npz_fname in tqdm(sorted(glob.glob(os.path.join(paths.raw_amass, ds_name, "*/*_poses.npz")))):
@@ -149,6 +172,10 @@ def process_amass(dataset=None):
             data_pose.extend(cdata['poses'][::step].astype(np.float32))
             data_trans.extend(cdata['trans'][::step].astype(np.float32))
             data_beta.append(cdata['betas'][:10])
+            
+            shape = cdata['betas'][:10]
+            scale_data.append(_get_scale(shape))
+            
             length.append(cdata['poses'][::step].shape[0])
 
         if len(data_pose) == 0:
@@ -159,6 +186,7 @@ def process_amass(dataset=None):
         shape = torch.tensor(np.asarray(data_beta, np.float32))
         tran = torch.tensor(np.asarray(data_trans, np.float32))
         pose = torch.tensor(np.asarray(data_pose, np.float32)).view(-1, 52, 3)
+        scale = torch.tensor(np.asarray(scale_data, np.float32))
 
         # include the left and right index fingers in the pose
         pose[:, 23] = pose[:, 37]     # right hand 
@@ -173,7 +201,7 @@ def process_amass(dataset=None):
         print("Synthesizing IMU accelerations and orientations")
         b = 0
         out_pose, out_shape, out_tran, out_joint, out_vrot, out_vacc, out_contact = [], [], [], [], [], [], []
-        out_rheight = []
+        out_rheight, out_scale = [], []
         for i, l in tqdm(list(enumerate(length))):
             if l <= 12: b += l; print("\tdiscard one sequence with length", l); continue
             p = math.axis_angle_to_rotation_matrix(pose[b:b + l]).view(-1, 24, 3, 3)
@@ -187,6 +215,7 @@ def process_amass(dataset=None):
             out_contact.append(_foot_ground_probs(joint).clone()) # N, 2
             out_vrot.append(grot[:, ji_mask])  # N, 6, 3, 3
             out_rheight.append(_relative_height(vert))  # N
+            out_scale.append(scale[i].clone())  # N
             b += l
 
         print("Saving...")
@@ -199,7 +228,8 @@ def process_amass(dataset=None):
             'acc': out_vacc,
             'ori': out_vrot,
             'contact': out_contact,
-            'rheight': out_rheight
+            'rheight': out_rheight,
+            'scale': out_scale
         }
         if dataset:
             data_path = paths.processed_datasets / "debug" / f"{ds_name}.pt"
@@ -332,13 +362,14 @@ def process_totalcapture():
                 iacc[:, imu_id, i] += d
 
     data = {
-        'acc': v_accs,
+        'acc': accs,
         'ori': v_oris,
         'pose': poses,
         'tran': trans,
         'rheight': rheights,
         'heights': heights
     }
+    
     data_path = paths.eval_dir / "totalcapture.pt"
     torch.save(data, data_path)
     print("Preprocessed TotalCapture dataset is saved at:", data_path)

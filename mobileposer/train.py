@@ -89,8 +89,8 @@ class TrainingManager:
         model.hypers = self.hypers 
 
         # create directory for module
-        module_path = checkpoint_path / module_name / combo_id
-        make_dir(module_path)
+        module_path = checkpoint_path / combo_id
+        os.makedirs(module_path, exist_ok=True)
         
         if module_name == "joints" or module_name == "poser":
             concat = True
@@ -114,7 +114,7 @@ class TrainingManager:
             torch.cuda.empty_cache()
 
 
-def get_checkpoint_path(finetune: str, init_from: str):
+def get_checkpoint_path(finetune: str, init_from: str, name: str=None):
     if finetune:
         # finetune from a checkpoint
         parts = init_from.split(os.path.sep)
@@ -125,11 +125,11 @@ def get_checkpoint_path(finetune: str, init_from: str):
     else:
         # make directory for trained models
         if init_from is not None:
-            checkpoint_path = Path(init_from)
+            checkpoint_path = Path(init_from) / name
         else:
             dir_name = get_dir_number(paths.checkpoint) 
             checkpoint_path = paths.checkpoint / str(dir_name)
-    
+
     os.makedirs(checkpoint_path, exist_ok=True)
     return Path(checkpoint_path)
 
@@ -140,6 +140,7 @@ if __name__ == "__main__":
     parser.add_argument("--finetune", type=str, default=None)
     parser.add_argument("--init-from", nargs="?", default="scratch", type=str)
     parser.add_argument("--combo_id", type=str)
+    parser.add_argument("--name", type=str)
     args = parser.parse_args()
 
     # set seed for reproducible results
@@ -149,7 +150,7 @@ if __name__ == "__main__":
     paths.checkpoint.mkdir(exist_ok=True)
 
     # initialize training manager
-    checkpoint_path = get_checkpoint_path(args.finetune, args.init_from)
+    checkpoint_path = get_checkpoint_path(args.finetune, args.init_from, args.name)
     training_manager = TrainingManager(
         finetune=args.finetune,
         fast_dev_run=args.fast_dev_run
