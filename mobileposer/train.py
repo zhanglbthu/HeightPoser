@@ -89,7 +89,7 @@ class TrainingManager:
         model.hypers = self.hypers 
 
         # create directory for module
-        module_path = checkpoint_path / combo_id
+        module_path = checkpoint_path / module_name
         os.makedirs(module_path, exist_ok=True)
         
         if module_name == "joints" or module_name == "poser":
@@ -138,7 +138,7 @@ if __name__ == "__main__":
     parser.add_argument("--module", default=None)
     parser.add_argument("--fast-dev-run", action="store_true")
     parser.add_argument("--finetune", type=str, default=None)
-    parser.add_argument("--init-from", nargs="?", default="scratch", type=str)
+    parser.add_argument("--init-from", nargs="?", default=None, type=str)
     parser.add_argument("--combo_id", type=str)
     parser.add_argument("--name", type=str)
     args = parser.parse_args()
@@ -177,4 +177,4 @@ if __name__ == "__main__":
     else:
         # train all modules
         for module_name, module in MODULES.items():
-            training_manager.train_module(module(), module_name, checkpoint_path)
+            training_manager.train_module(module(), module_name, checkpoint_path, combo_id=args.combo_id)

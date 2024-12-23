@@ -198,14 +198,11 @@ if __name__ == '__main__':
     if args.debug:
         fold = 'debug'
     
-    dataset = PoseDataset(fold=fold, evaluate=args.dataset)
+    dataset = PoseDataset(fold=fold, evaluate=args.dataset, combo_id='lw_rp_h')
     
     save_dir = Path('data') / 'eval' / args.name / args.dataset
     save_dir.mkdir(parents=True, exist_ok=True)
     
-    tran_nn = True
-    print("tran_nn: ", tran_nn)
-    
     # evaluate pose
     print(f"Starting evaluation: {args.dataset.capitalize()}")
-    evaluate_pose(model, dataset, evaluate_tran=True, save_dir=save_dir, tran_nn=tran_nn)
+    evaluate_pose(model, dataset, evaluate_tran=True, save_dir=save_dir)

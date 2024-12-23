@@ -24,11 +24,11 @@ body_model = ParametricModel(paths.smpl_file)
 def _syn_acc(v, smooth_n=4):
     """Synthesize accelerations from vertex positions."""
     mid = smooth_n // 2
-    acc = torch.stack([(v[i] + v[i + 2] - 2 * v[i + 1]) * 3600 for i in range(0, v.shape[0] - 2)])
+    acc = torch.stack([(v[i] + v[i + 2] - 2 * v[i + 1]) * 900 for i in range(0, v.shape[0] - 2)])
     acc = torch.cat((torch.zeros_like(acc[:1]), acc, torch.zeros_like(acc[:1])))
     if mid != 0:
         acc[smooth_n:-smooth_n] = torch.stack(
-            [(v[i] + v[i + smooth_n * 2] - 2 * v[i + smooth_n]) * 3600 / smooth_n ** 2
+            [(v[i] + v[i + smooth_n * 2] - 2 * v[i + smooth_n]) * 900 / smooth_n ** 2
              for i in range(0, v.shape[0] - smooth_n * 2)])
     return acc
 
@@ -499,7 +499,7 @@ def process_imuposer(split: str="train"):
             with open(fpath, "rb") as f: 
                 fdata = pickle.load(f)
                 
-                acc = fdata['imu'][:, :5*3].view(-1, 5, 3) * 4.0
+                acc = fdata['imu'][:, :5*3].view(-1, 5, 3)
                 ori = fdata['imu'][:, 5*3:].view(-1, 5, 3, 3)
                 pose = math.axis_angle_to_rotation_matrix(fdata['pose']).view(-1, 24, 3, 3)
                 tran = fdata['trans'].to(torch.float32)
@@ -514,7 +514,7 @@ def process_imuposer(split: str="train"):
                 
                 grot, joint, vert = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
                 
-                # acc = _syn_acc(vert[:, vi_mask])
+                acc = _syn_acc(vert[:, vi_mask])
                 # ori = grot[:, ji_mask]
 
                 accs.append(acc)    # N, 5, 3

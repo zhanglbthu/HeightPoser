@@ -7,7 +7,7 @@ class train_hypers:
     """Hyperparameters for training."""
     batch_size = 256
     num_workers = 8
-    num_epochs = 200
+    num_epochs = 60
     accelerator = "gpu"
     device = 0
     lr = 1e-3

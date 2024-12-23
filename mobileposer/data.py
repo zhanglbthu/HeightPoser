@@ -90,7 +90,7 @@ class PoseDataset(Dataset):
             pose = pose if self.evaluate else pose_global.view(-1, 24, 3, 3)                # use global only for training
             joint = joint.view(-1, 24, 3)
             
-            # height = height.view(-1, 2)
+            height = height.view(-1, 2)
             
             # self._process_combo_data(acc, ori, pose, joint, tran, foot, data)
             self._process_single_combo_data(acc, ori, pose, joint, tran, foot, data, height, scale)
@@ -108,9 +108,9 @@ class PoseDataset(Dataset):
         combo_ori = ori[:, c]
         imu_input = torch.cat([combo_acc.flatten(1), combo_ori.flatten(1)], dim=1) # [[N, 9], [N, 27]] => [N, 36]
         
-        # if height is not None:
-        #     # add two absolute height to the input
-        #     imu_input = torch.cat([imu_input, height], dim=1)
+        if height is not None:
+            # add two absolute height to the input
+            imu_input = torch.cat([imu_input, height], dim=1)
         
         data_len = len(imu_input) if self.evaluate else datasets.window_length # N or window_length
         

@@ -18,16 +18,13 @@ from mobileposer.models.joints import Joints
 from mobileposer.models.footcontact import FootContact
 from mobileposer.models.velocity import Velocity
 
-from mobileposer.models.velocity_new import Velocity_new
-
-
 class MobilePoserNet(L.LightningModule):
     """
     Inputs: N IMUs.
     Outputs: SMPL Pose Parameters (as 6D Rotations) and Translation. 
     """
 
-    def __init__(self, poser: Poser=None, joints: Joints=None, foot_contact: FootContact=None, velocity_new: Velocity_new=None, finetune: bool=False):
+    def __init__(self, poser: Poser=None, joints: Joints=None, foot_contact: FootContact=None, velocity: Velocity=None, finetune: bool=False):
         super().__init__()
 
         # constants
@@ -43,8 +40,7 @@ class MobilePoserNet(L.LightningModule):
         self.pose = poser if poser else Poser()                                 # pose estimation model
         self.joints = joints if joints else Joints()                            # joint estimation model
         self.foot_contact = foot_contact if foot_contact else FootContact()     # foot-ground probability model
-        # self.velocity = velocity if velocity else Velocity()                    # joint velocity model
-        self.velocity = velocity_new if velocity_new else Velocity_new()                    # joint velocity model
+        self.velocity = velocity if velocity else Velocity()                    # joint velocity model
 
         # base joints
         self.j, _ = self.bodymodel.get_zero_pose_joint_and_vertex() # [24, 3]
@@ -117,7 +113,7 @@ class MobilePoserNet(L.LightningModule):
         foot_contact = self.foot_contact(tran_input, input_lengths)
 
         # foward the foot-joint velocity model
-        vel_input = batch[:, :, :self.C.n_imu]
+        vel_input = torch.cat((pred_joints, batch), dim=-1)
         pred_vel = self.velocity.forward_online(vel_input, input_lengths).squeeze(0)
 
         return pred_pose, pred_joints, pred_vel, foot_contact
@@ -228,15 +224,11 @@ class MobilePoserNet(L.LightningModule):
         
         weight = self._prob_to_weight(contact.max())
         velocity = art.math.lerp(pred_vel, contact_vel, weight)
-        
-        if tran_nn:
-            # only use network-based velocity
-            velocity = pred_vel
 
-        # # remove penetration
-        # current_foot_y = self.current_root_y + min(lfoot_pos[1].item(), rfoot_pos[1].item())
-        # if current_foot_y + velocity[1].item() <= self.floor_y:
-        #     velocity[1] = self.floor_y - current_foot_y
+        # remove penetration
+        current_foot_y = self.current_root_y + min(lfoot_pos[1].item(), rfoot_pos[1].item())
+        if current_foot_y + velocity[1].item() <= self.floor_y:
+            velocity[1] = self.floor_y - current_foot_y
 
         self.current_root_y += velocity[1].item()
         self.last_lfoot_pos, self.last_rfoot_pos = lfoot_pos, rfoot_pos
