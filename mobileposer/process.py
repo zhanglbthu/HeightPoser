@@ -490,8 +490,6 @@ def process_imuposer(split: str="train"):
     rheights = []
     heights = []
     
-    step = max(1, round(60 / TARGET_FPS))
-    
     for pid_path in sorted(paths.raw_imuposer.iterdir()):
         if pid_path.name not in subjects:
             continue
@@ -501,16 +499,10 @@ def process_imuposer(split: str="train"):
             with open(fpath, "rb") as f: 
                 fdata = pickle.load(f)
                 
-                acc = fdata['imu'][:, :5*3].view(-1, 5, 3)
+                acc = fdata['imu'][:, :5*3].view(-1, 5, 3) * 4.0
                 ori = fdata['imu'][:, 5*3:].view(-1, 5, 3, 3)
                 pose = math.axis_angle_to_rotation_matrix(fdata['pose']).view(-1, 24, 3, 3)
                 tran = fdata['trans'].to(torch.float32)
-                
-                # downsample
-                acc = acc[::step].contiguous()
-                ori = ori[::step].contiguous()
-                pose = pose[::step].contiguous()
-                tran = tran[::step].contiguous()
                 
                  # align IMUPoser global fame with DIP
                 rot = torch.tensor([[[-1, 0, 0], [0, 0, 1], [0, 1, 0.]]])
@@ -522,8 +514,8 @@ def process_imuposer(split: str="train"):
                 
                 grot, joint, vert = body_model.forward_kinematics(pose, tran=tran, calc_mesh=True)
                 
-                acc = _syn_acc(vert[:, vi_mask])
-                ori = grot[:, ji_mask]
+                # acc = _syn_acc(vert[:, vi_mask])
+                # ori = grot[:, ji_mask]
 
                 accs.append(acc)    # N, 5, 3
                 oris.append(ori)    # N, 5, 3, 3

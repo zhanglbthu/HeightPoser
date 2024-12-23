@@ -26,14 +26,16 @@ class Velocity_new(L.LightningModule):
         self.C = model_config
         self.hypers = train_hypers
         self.bodymodel = ParametricModel(paths.smpl_file, device=self.C.device)
-
+        self.input_size = 12 * self.imu_nums
+        
         # model definitions
-        self.vel = RNN(12 * self.imu_nums, 3, 256, bidirectional=False)  # per-frame velocity of the root joint.
+        self.vel = RNN(self.input_size, 3, 256, bidirectional=False)  # per-frame velocity of the root joint.
         
         self.rnn_state = None
 
         # log input and output dimensions
         print(f"combo_id: {combo_id}")
+        print(f"input_size: {self.input_size}")
         
         # loss function 
         self.loss = nn.MSELoss()

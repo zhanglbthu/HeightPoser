@@ -131,13 +131,14 @@ def evaluate_tran(model, dataset, num_past_frame=20, num_future_frame=5, evaluat
                     if len(errs) > 0:
                         tran_errors[window_size].append(sum(errs) / len(errs))
                         
-                        with open (log_path, 'a') as f:
-                            print("{:.4f}".format(sum(errs) / len(errs)), file=f, end=" ")
-                            if window_size == 7:
-                                print(file=f)
-                    else:
-                        with open (log_path, 'a') as f:
-                            print(file=f)
+                    #     with open (log_path, 'a') as f:
+                    #         print("{:.4f}".format(sum(errs) / len(errs)), file=f, end=" ")
+                    #         if window_size == 7:
+                    #             print(file=f)
+                    # else:
+                    #     with open (log_path, 'a') as f:
+                    #         print(file=f)
+                    #         break
                             
             if getenv("ONLINE"):
                 online_errs.append(evaluator.eval(pose_t, pose_t, tran_p=tran_p_online, tran_t=tran_t))
